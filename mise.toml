@@ -1,0 +1,5 @@
+[tools]
+rust = { version = "1.99.0", components = "clippy,rustfmt" }
+# binstall lets the cargo: tools below come down prebuilt instead of compiling
+cargo-binstall = "1.26.2"
+"cargo:cargo-nextest" = "0.9.150"

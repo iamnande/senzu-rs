@@ -1,0 +1,16 @@
+[package]
+name         = "senzu"
+version      = "0.1.0"
+edition      = "2024"
+rust-version = "1.99"
+publish      = false
+license      = "AGPL-3.0-only"
+
+[[bin]]
+name = "senzu"
+path = "src/main.rs"
+
+[features]
+default = []
+# otlp export, off until there's a collector to talk to
+otlp = []
