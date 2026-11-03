@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+use crate::bean::{Phase, Priority};
+
 /// senzu: browse beans, launch an agent into one
 #[derive(Debug, Parser)]
 #[command(name = "senzu", version, about)]
@@ -29,6 +31,12 @@ pub enum Cmd {
         /// every priority, not just urgent and high
         #[arg(long)]
         all: bool,
+        /// only this phase (done included, if you ask for it)
+        #[arg(long)]
+        phase: Option<Phase>,
+        /// only this priority, in place of urgent and high
+        #[arg(long)]
+        priority: Option<Priority>,
         /// json, even on a tty
         #[arg(long)]
         json: bool,

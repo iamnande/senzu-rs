@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
@@ -108,7 +108,9 @@ pub struct LogEntry {
     pub text: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, clap::ValueEnum,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Phase {
     Ground,
@@ -136,7 +138,9 @@ impl fmt::Display for Phase {
 }
 
 /// derive order is sort order: urgent sorts first
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, clap::ValueEnum,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Priority {
     Urgent,
@@ -146,7 +150,28 @@ pub enum Priority {
     None,
 }
 
+impl fmt::Display for Priority {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            Self::Urgent => "urgent",
+            Self::High => "high",
+            Self::Medium => "medium",
+            Self::Low => "low",
+            Self::None => "none",
+        };
+        f.write_str(name)
+    }
+}
+
 impl Bean {
+    /// the first repo path that exists on this machine
+    pub fn worktree(&self) -> Option<&Path> {
+        self.repos
+            .iter()
+            .map(|r| r.path.as_path())
+            .find(|p| p.is_dir())
+    }
+
     /// every rule serde can't check on its own. empty means the bean is good
     pub fn problems(&self, stem: &str) -> Vec<String> {
         let mut out = Vec::new();

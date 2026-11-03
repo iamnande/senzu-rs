@@ -93,15 +93,15 @@ fn only_a_week_of_logs_is_kept() {
 
 #[test]
 fn unmakeable_log_dir_still_runs() {
-    let home = TempDir::new().unwrap();
+    let world = common::World::new();
     // a file where the state dir wants to be
-    std::fs::write(home.path().join("blocker"), "").unwrap();
-    senzu(home.path())
-        .arg("--beans")
-        .arg(home.path().join("nope"))
-        .env("XDG_STATE_HOME", home.path().join("blocker"))
-        .arg("ls")
+    let blocker = world.home.path().join("blocker");
+    std::fs::write(&blocker, "").unwrap();
+    world
+        .senzu()
+        .env("XDG_STATE_HOME", &blocker)
+        .arg("check")
         .assert()
-        .code(1)
-        .stderr(predicate::str::contains("not built yet"));
+        .success()
+        .stdout("ok 5 beans\n");
 }
