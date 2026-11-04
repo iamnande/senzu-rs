@@ -32,3 +32,8 @@ test: ## dev: do we profess to work?
 install: ## dev: put this build of senzu in ~/.cargo/bin
 	@$(call log,"installing senzu")
 	@cargo install --path . --locked
+
+.PHONY: deny
+deny: ## dev: any known holes, odd licenses or stray sources in our deps?
+	@$(call log,"checking dependencies")
+	@cargo deny check
