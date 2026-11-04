@@ -1,4 +1,4 @@
-//! senzu open: the argv, the cwd and the launchers
+//! senzu open: the command, the cwd and the launchers
 #![allow(
     clippy::unwrap_used,
     reason = "a test that can't unwrap should fail right there"
@@ -53,7 +53,8 @@ fn dry_run_is_claude_on_the_phase_skill_in_the_beans_parent() {
         got,
         json!({
             "launcher": "exec",
-            "argv": ["claude", "--name", "crab-shell", "/iam-execute crab-shell"],
+            "program": "claude",
+            "args": ["--name", "crab-shell", "/iam-execute crab-shell"],
             "cwd": world.home.path(),
             "session": "crab-shell",
         })
@@ -80,7 +81,7 @@ fn inside_zellij_the_default_is_a_zellij_pane() {
     let world = World::new();
     let got = dry_run(world.senzu().env("ZELLIJ", "0"), "harden-the-hut");
     assert_eq!(got["launcher"], "zellij");
-    assert_eq!(got["argv"][0], "zellij");
+    assert_eq!(got["program"], "zellij");
 }
 
 #[test]

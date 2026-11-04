@@ -43,6 +43,7 @@ pedantic = { level = "warn", priority = -1 }
 
 # the edges: no panicking shortcuts, and output only where it's meant to be
 disallowed_macros = "deny"
+expect_used = "deny"
 print_stderr = "warn"
 print_stdout = "warn"
 string_slice = "warn"

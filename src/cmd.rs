@@ -85,7 +85,7 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             let profile = launch::Profile::resolve(&settings.agent, &settings.launch)?;
             let bean = found(load::one(&settings.beans, &slug)?);
             let planned = launch::plan(&bean, profile, &settings.beans)?;
-            tracing::info!(argv = ?planned.argv, cwd = %planned.cwd.display(), "launch planned");
+            tracing::info!(program = %planned.program, args = ?planned.args, cwd = %planned.cwd.display(), "launch planned");
             if dry_run {
                 println!("{}", serde_json::to_string_pretty(&planned)?);
                 return Ok(ExitCode::SUCCESS);

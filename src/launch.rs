@@ -83,8 +83,9 @@ pub(crate) fn launcher(name: &str) -> Result<Launcher, UnknownProfile> {
 #[derive(Debug, Serialize)]
 pub(crate) struct Launch {
     pub(crate) launcher: Launcher,
-    /// the full command, launcher wrapper included
-    pub(crate) argv: Vec<String>,
+    /// what runs: the agent, or zellij wrapping it
+    pub(crate) program: String,
+    pub(crate) args: Vec<String>,
     pub(crate) cwd: PathBuf,
     pub(crate) session: String,
 }
@@ -136,23 +137,27 @@ pub(crate) fn plan(bean: &Bean, profile: Profile, beans_dir: &Path) -> Result<La
         .worktree()
         .unwrap_or_else(|| fallback_cwd(beans_dir))
         .to_owned();
-    let mut argv = vec![agent.program.to_owned()];
-    argv.extend((agent.args)(bean));
+    let mut program = agent.program.to_owned();
+    let mut args = (agent.args)(bean);
     if launcher == Launcher::Zellij {
-        let mut wrapped: Vec<String> = vec!["zellij".into(), "run".into(), "--cwd".into()];
-        wrapped.push(cwd.display().to_string());
-        wrapped.extend([
+        let mut wrapped = vec![
+            "run".into(),
+            "--cwd".into(),
+            cwd.display().to_string(),
             "--name".into(),
             bean.slug.clone(),
             "--close-on-exit".into(),
             "--".into(),
-        ]);
-        wrapped.extend(argv);
-        argv = wrapped;
+            program,
+        ];
+        wrapped.append(&mut args);
+        program = "zellij".into();
+        args = wrapped;
     }
     Ok(Launch {
         launcher,
-        argv,
+        program,
+        args,
         cwd,
         session: bean.slug.clone(),
     })
@@ -206,11 +211,10 @@ pub(crate) fn preflight(launch: &Launch, agent: &Agent, host: &Host) -> Result<(
 /// tui, and its stderr comes back in the error. call `preflight` first
 #[tracing::instrument(name = "launch", skip_all, fields(session = %launch.session, launcher = ?launch.launcher))]
 pub(crate) fn run(launch: &Launch) -> Result<(), LaunchError> {
-    let (program, args) = launch.argv.split_first().expect("argv has a program");
-    let mut cmd = Command::new(program);
-    cmd.args(args).current_dir(&launch.cwd);
+    let mut cmd = Command::new(&launch.program);
+    cmd.args(&launch.args).current_dir(&launch.cwd);
     let spawn = |source| LaunchError::Spawn {
-        program: program.clone(),
+        program: launch.program.clone(),
         source,
     };
     match launch.launcher {
@@ -279,9 +283,10 @@ mod tests {
     fn claude_opens_on_the_phase_skill() {
         let b = bean("execute", None);
         let got = plan(&b, profile(Launcher::Exec), Path::new("/s/beans")).unwrap();
+        assert_eq!(got.program, "claude");
         assert_eq!(
-            got.argv,
-            ["claude", "--name", "crab-shell", "/iam-execute crab-shell"]
+            got.args,
+            ["--name", "crab-shell", "/iam-execute crab-shell"]
         );
         assert_eq!(got.session, "crab-shell");
     }
@@ -305,10 +310,10 @@ mod tests {
     fn zellij_wraps_the_agent_in_a_named_pane() {
         let b = bean("plan", None);
         let got = plan(&b, profile(Launcher::Zellij), Path::new("/s/beans")).unwrap();
+        assert_eq!(got.program, "zellij");
         assert_eq!(
-            got.argv,
+            got.args,
             [
-                "zellij",
                 "run",
                 "--cwd",
                 "/s",
