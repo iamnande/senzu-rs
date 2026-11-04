@@ -15,6 +15,7 @@ anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive", "env"] }
 crossterm = "0.29"
 jiff = { version = "0.2.39", features = ["serde"] }
+ratatui = "0.30"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 thiserror = "2.0.21"
@@ -22,6 +23,7 @@ toml = "1.1.8"
 tracing = "0.1.44"
 tracing-appender = "0.2.5"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tui-big-text = "0.8"
 
 [dev-dependencies]
 assert_cmd = "2.2.2"

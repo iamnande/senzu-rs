@@ -16,7 +16,7 @@ pub struct Filter {
 impl Filter {
     /// done beans stay out unless `--phase done` asks for them. urgent and high
     /// by default; `--all` or an explicit `--priority` replaces that.
-    fn keeps(&self, bean: &Bean) -> bool {
+    pub fn keeps(&self, bean: &Bean) -> bool {
         let phase_ok = match self.phase {
             Some(phase) => bean.phase == phase,
             None => bean.phase != Phase::Done,
@@ -32,8 +32,13 @@ impl Filter {
 /// filtered, then sorted by (priority, slug)
 pub fn select<'a>(beans: &'a [Bean], filter: &Filter) -> Vec<&'a Bean> {
     let mut out: Vec<&Bean> = beans.iter().filter(|b| filter.keeps(b)).collect();
-    out.sort_by(|a, b| (a.priority, &a.slug).cmp(&(b.priority, &b.slug)));
+    out.sort_by(|a, b| order(a, b));
     out
+}
+
+/// priority first, then slug
+pub fn order(a: &Bean, b: &Bean) -> std::cmp::Ordering {
+    (a.priority, &a.slug).cmp(&(b.priority, &b.slug))
 }
 
 /// one `ls` row as json

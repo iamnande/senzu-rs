@@ -158,55 +158,69 @@ pub fn plan(bean: &Bean, profile: Profile, beans_dir: &Path) -> Result<Launch, L
     })
 }
 
-/// everything `run` needs from the environment, checked before anything starts
-pub struct Host {
-    pub path: Option<OsString>,
-    pub in_zellij: bool,
-}
-
 /// where a bean with no worktree opens: the beans dir's parent, usually the
 /// repo the beans live in
 pub fn fallback_cwd(beans_dir: &Path) -> &Path {
     beans_dir.parent().unwrap_or(beans_dir)
 }
 
-/// exec never returns on success. zellij returns once the pane is open.
-/// zellij gets no stdin or stdout, since it would print its pane id over the
-/// tui, and its stderr comes back in the error
-#[tracing::instrument(name = "launch", skip_all, fields(session = %launch.session, launcher = ?launch.launcher))]
-pub fn run(launch: &Launch, agent: &Agent, host: &Host) -> Result<(), LaunchError> {
+/// everything `run` needs from the environment, checked before anything starts
+pub struct Host {
+    pub path: Option<OsString>,
+    pub in_zellij: bool,
+}
+
+impl Host {
+    pub fn from_process() -> Self {
+        Self {
+            path: std::env::var_os("PATH"),
+            in_zellij: std::env::var_os("ZELLIJ").is_some(),
+        }
+    }
+}
+
+/// everything that can be known wrong before starting anything: the agent and,
+/// for zellij, the multiplexer on PATH and us inside it
+pub fn preflight(launch: &Launch, agent: &Agent, host: &Host) -> Result<(), LaunchError> {
     let on_path = |p: &str| find_on_path(p, host.path.as_deref()).is_some();
     if !on_path(agent.program) {
         return Err(LaunchError::NotOnPath(agent.program.to_owned()));
     }
+    if launch.launcher == Launcher::Zellij {
+        if !host.in_zellij {
+            return Err(LaunchError::NotInZellij);
+        }
+        if !on_path("zellij") {
+            return Err(LaunchError::NotOnPath("zellij".into()));
+        }
+    }
+    Ok(())
+}
+
+/// exec never returns on success. zellij returns once the pane is open.
+/// zellij gets no stdin or stdout, since it would print its pane id over the
+/// tui, and its stderr comes back in the error. call `preflight` first
+#[tracing::instrument(name = "launch", skip_all, fields(session = %launch.session, launcher = ?launch.launcher))]
+pub fn run(launch: &Launch) -> Result<(), LaunchError> {
     let (program, args) = launch.argv.split_first().expect("argv has a program");
     let mut cmd = Command::new(program);
     cmd.args(args).current_dir(&launch.cwd);
+    let spawn = |source| LaunchError::Spawn {
+        program: program.clone(),
+        source,
+    };
     match launch.launcher {
         Launcher::Exec => {
             use std::os::unix::process::CommandExt as _;
-            let source = cmd.exec();
-            Err(LaunchError::Spawn {
-                program: program.clone(),
-                source,
-            })
+            Err(spawn(cmd.exec()))
         }
         Launcher::Zellij => {
-            if !host.in_zellij {
-                return Err(LaunchError::NotInZellij);
-            }
-            if !on_path("zellij") {
-                return Err(LaunchError::NotOnPath("zellij".into()));
-            }
             let out = cmd
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::piped())
                 .output()
-                .map_err(|source| LaunchError::Spawn {
-                    program: program.clone(),
-                    source,
-                })?;
+                .map_err(spawn)?;
             if out.status.success() {
                 return Ok(());
             }

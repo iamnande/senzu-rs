@@ -6,6 +6,7 @@ mod launch;
 mod load;
 mod output;
 mod telemetry;
+mod tui;
 
 use std::io::IsTerminal;
 use std::path::Path;
@@ -97,14 +98,16 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
                 println!("{}", serde_json::to_string_pretty(&planned)?);
                 return Ok(ExitCode::SUCCESS);
             }
-            let host = launch::Host {
-                path: std::env::var_os("PATH"),
-                in_zellij: env.in_zellij,
-            };
-            launch::run(&planned, profile.agent, &host)?;
+            launch::preflight(&planned, profile.agent, &launch::Host::from_process())?;
+            launch::run(&planned)?;
             Ok(ExitCode::SUCCESS)
         }
-        None if tty => anyhow::bail!("the tui isn't built yet"),
+        None if tty => {
+            // unknown profiles are a usage mistake, caught before the screen changes
+            let profile = launch::Profile::resolve(&settings.agent, &settings.launch)?;
+            tui::run(&settings.beans, &env.home, profile)?;
+            Ok(ExitCode::SUCCESS)
+        }
         None => {
             let harvest = load_and_warn(&settings.beans)?;
             let cwd = std::env::current_dir()?;
