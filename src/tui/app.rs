@@ -229,7 +229,7 @@ mod tests {
 
     fn bean([slug, title, priority, phase]: [&str; 4]) -> Bean {
         serde_json::from_value(serde_json::json!({
-            "slug": slug, "title": title, "phase": phase, "priority": priority,
+            "schema": 1, "slug": slug, "title": title, "phase": phase, "priority": priority,
             "issue": null, "thread": null, "plan": null,
             "next": { "text": format!("/iam-{phase} {slug}"), "draft": null },
         }))

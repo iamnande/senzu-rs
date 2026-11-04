@@ -1,7 +1,9 @@
 //! reading beans off disk. the cli never writes them
 use std::path::{Path, PathBuf};
 
-use crate::bean::{self, Bean};
+use serde::Deserialize;
+
+use crate::bean::{self, Bean, SCHEMA};
 
 /// one bean that didn't make it. the rest of the dir still loads
 #[derive(Debug, thiserror::Error)]
@@ -21,6 +23,22 @@ pub enum LoadError {
         path: PathBuf,
         /// what serde said, with line and column
         source: serde_json::Error,
+    },
+    /// written for a schema this senzu doesn't read
+    #[error("{}: schema {found}, this senzu reads {SCHEMA}{}", path.display(), schema_hint(*found))]
+    Schema {
+        /// the bean's file
+        path: PathBuf,
+        /// the schema the bean says it's on
+        found: u32,
+    },
+    /// a field this senzu doesn't know. the bean still loads, `check` fails
+    #[error("{}: unknown field `{field}`, from a newer senzu? upgrade, or drop it", path.display())]
+    UnknownField {
+        /// the bean's file
+        path: PathBuf,
+        /// where in the bean, like `open.0.vibes`
+        field: String,
     },
     /// it parsed, but breaks a rule serde can't check
     #[error("{}: {problem}", path.display())]
@@ -62,6 +80,14 @@ pub enum OneError {
     Bad(Vec<LoadError>),
 }
 
+fn schema_hint(found: u32) -> &'static str {
+    if found > SCHEMA {
+        ", upgrade senzu"
+    } else {
+        ", the bean needs migrating"
+    }
+}
+
 fn lines(errors: &[LoadError]) -> String {
     errors
         .iter()
@@ -77,6 +103,8 @@ pub struct Harvest {
     pub beans: Vec<Bean>,
     /// the beans that didn't make it, and why
     pub errors: Vec<LoadError>,
+    /// fields the beans that did load carry and this senzu doesn't know
+    pub unknown: Vec<LoadError>,
     /// old `.md` beans sitting in the dir, skipped
     pub markdown: usize,
 }
@@ -105,7 +133,10 @@ pub fn load(dir: &Path) -> Result<Harvest, DirError> {
     for path in paths {
         match path.extension().and_then(|e| e.to_str()) {
             Some("json") => match parse(&path) {
-                Ok(bean) => harvest.beans.push(bean),
+                Ok(found) => {
+                    harvest.beans.push(found.bean);
+                    harvest.unknown.extend(found.unknown);
+                }
                 Err(errs) => harvest.errors.extend(errs),
             },
             Some("md") => harvest.markdown += 1,
@@ -129,7 +160,7 @@ pub fn load(dir: &Path) -> Result<Harvest, DirError> {
 /// [`OneError::Unknown`] when there's no such bean, [`OneError::Bad`] when
 /// it's there but broken, and [`OneError::Dir`] when the dir itself is.
 #[tracing::instrument(name = "load", skip_all, fields(dir = %dir.display(), slug))]
-pub fn one(dir: &Path, slug: &str) -> Result<Bean, OneError> {
+pub fn one(dir: &Path, slug: &str) -> Result<Found, OneError> {
     if !dir.is_dir() {
         return Err(DirError::NotFound(dir.to_owned()).into());
     }
@@ -140,25 +171,59 @@ pub fn one(dir: &Path, slug: &str) -> Result<Bean, OneError> {
     parse(&path).map_err(OneError::Bad)
 }
 
+/// one bean, and the fields in it this senzu doesn't know
+#[derive(Debug)]
+pub struct Found {
+    /// the bean
+    pub bean: Bean,
+    /// each a [`LoadError::UnknownField`]
+    pub unknown: Vec<LoadError>,
+}
+
+/// just enough to read the schema before trusting the rest of the shape
+#[derive(Deserialize)]
+struct Peek {
+    schema: u32,
+}
+
 // debug, so a normal run doesn't write a line per bean
 #[tracing::instrument(name = "parse", level = "debug", skip_all, fields(file = %path.display()))]
-fn parse(path: &Path) -> Result<Bean, Vec<LoadError>> {
+fn parse(path: &Path) -> Result<Found, Vec<LoadError>> {
     let raw = std::fs::read(path).map_err(|source| {
         vec![LoadError::Read {
             path: path.to_owned(),
             source,
         }]
     })?;
-    let bean: Bean = serde_json::from_slice(&raw).map_err(|source| {
+    let parse_err = |source| {
         vec![LoadError::Parse {
             path: path.to_owned(),
             source,
         }]
-    })?;
+    };
+    // the schema first: a bean from another schema may not fit the types at all
+    let Peek { schema } = serde_json::from_slice(&raw).map_err(parse_err)?;
+    if schema != SCHEMA {
+        return Err(vec![LoadError::Schema {
+            path: path.to_owned(),
+            found: schema,
+        }]);
+    }
+    let mut fields = Vec::new();
+    let de = &mut serde_json::Deserializer::from_slice(&raw);
+    let bean: Bean = serde_ignored::deserialize(de, |field| fields.push(field.to_string()))
+        .map_err(parse_err)?;
+    let unknown = fields
+        .into_iter()
+        .map(|field| LoadError::UnknownField {
+            path: path.to_owned(),
+            field,
+        })
+        .collect();
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
     let problems = bean.problems(stem);
     if problems.is_empty() {
-        Ok(bean)
+        Ok(Found { bean, unknown })
     } else {
         Err(problems
             .into_iter()

@@ -115,9 +115,16 @@ fn launch_from(board: &mut Board, slug: &str, ctx: Ctx) -> Option<Outcome> {
 fn reload(board: &mut Board, beans_dir: &Path) -> anyhow::Result<()> {
     let harvest = load::load(beans_dir)?;
     let skipped = harvest.errors.len();
+    let unknown = harvest.unknown.len();
     board.markdown = harvest.markdown;
     board.replace_beans(harvest.beans);
-    board.status = (skipped > 0).then(|| format!("skipped {skipped} bad beans, see `senzu check`"));
+    board.status = match (skipped, unknown) {
+        (0, 0) => None,
+        (0, n) => Some(format!(
+            "{n} unknown fields, a newer senzu? see `senzu check`"
+        )),
+        (n, _) => Some(format!("skipped {n} bad beans, see `senzu check`")),
+    };
     Ok(())
 }
 

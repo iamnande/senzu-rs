@@ -170,7 +170,7 @@ mod tests {
 
     fn bean(slug: &str, priority: Priority, next: &str) -> Bean {
         serde_json::from_value(serde_json::json!({
-            "slug": slug, "title": "t", "phase": "plan", "priority": priority,
+            "schema": 1, "slug": slug, "title": "t", "phase": "plan", "priority": priority,
             "issue": null, "thread": null, "plan": null,
             "next": { "text": next, "draft": null },
         }))

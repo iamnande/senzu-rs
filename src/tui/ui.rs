@@ -600,7 +600,7 @@ mod tests {
     fn board() -> Board {
         let bean = |slug: &str, priority: &str, last: &str| -> Bean {
             serde_json::from_value(serde_json::json!({
-                "slug": slug, "title": format!("the {slug} title"), "phase": "plan",
+                "schema": 1, "slug": slug, "title": format!("the {slug} title"), "phase": "plan",
                 "priority": priority, "issue": null, "thread": null, "plan": null,
                 "next": { "text": format!("/iam-plan {slug}"), "draft": "the-map" },
                 "open": [{ "text": "a blocker", "blocks": true, "draft": null }],

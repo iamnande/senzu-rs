@@ -73,7 +73,7 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         Some(Cmd::Show { slug, json }) => {
-            let bean = load::one(&settings.beans, &slug)?;
+            let bean = found(load::one(&settings.beans, &slug)?);
             if json || !tty {
                 println!("{}", serde_json::to_string_pretty(&bean)?);
             } else {
@@ -83,7 +83,7 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
         }
         Some(Cmd::Open { slug, dry_run }) => {
             let profile = launch::Profile::resolve(&settings.agent, &settings.launch)?;
-            let bean = load::one(&settings.beans, &slug)?;
+            let bean = found(load::one(&settings.beans, &slug)?);
             let planned = launch::plan(&bean, profile, &settings.beans)?;
             tracing::info!(argv = ?planned.argv, cwd = %planned.cwd.display(), "launch planned");
             if dry_run {
@@ -119,11 +119,12 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
 fn check(dir: &Path) -> anyhow::Result<ExitCode> {
     let harvest = load::load(dir)?;
     warn_markdown(harvest.markdown);
-    if harvest.errors.is_empty() {
+    // check is the strict one: a field senzu doesn't know fails it
+    if harvest.errors.is_empty() && harvest.unknown.is_empty() {
         println!("ok {} beans", harvest.beans.len());
         return Ok(ExitCode::SUCCESS);
     }
-    for e in &harvest.errors {
+    for e in harvest.errors.iter().chain(&harvest.unknown) {
         println!("{e}");
     }
     Ok(ExitCode::FAILURE)
@@ -136,7 +137,18 @@ fn load_and_warn(dir: &Path) -> anyhow::Result<Harvest> {
     for e in &harvest.errors {
         eprintln!("senzu: skipping {e}");
     }
+    for e in &harvest.unknown {
+        eprintln!("senzu: {e}");
+    }
     Ok(harvest)
+}
+
+/// a bean for reading: unknown fields are a warning, not a failure
+fn found(found: load::Found) -> crate::bean::Bean {
+    for e in &found.unknown {
+        eprintln!("senzu: {e}");
+    }
+    found.bean
 }
 
 /// md beans are the old format, here until the migration clears them out

@@ -2,6 +2,10 @@
 //! format, so the skills that write beans, `senzu check` and anything else
 //! that reads them share this one definition.
 //!
+//! every bean says which `schema` it was written for. only a breaking change
+//! (a field renamed, removed or retyped) bumps it. a new field doesn't: an
+//! older senzu reads past it with a warning, and `check` flags it.
+//!
 //! terms: a fact is sourced, a decision is settled, an open item is
 //! unresolved, a draft is work product (an email, a script, a map), a log
 //! entry is something that happened.
@@ -13,10 +17,14 @@ use std::path::{Path, PathBuf};
 use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
 
+/// the schema this senzu reads. a bean with any other one is refused
+pub const SCHEMA: u32 = 1;
+
 /// one stream of work, one `<slug>.json` in the beans dir
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Bean {
+    /// the schema it was written for, see [`SCHEMA`]
+    pub schema: u32,
     /// lowercase-kebab, and the same as the file name
     pub slug: String,
     /// one line on what the stream is
@@ -61,7 +69,6 @@ pub struct Bean {
 
 /// something known, with where it came from
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Fact {
     /// the fact
     pub text: String,
@@ -73,7 +80,6 @@ pub struct Fact {
 
 /// something settled
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Decision {
     /// the decision
     pub text: String,
@@ -85,7 +91,6 @@ pub struct Decision {
 
 /// something unresolved
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Open {
     /// the question or task
     pub text: String,
@@ -97,7 +102,6 @@ pub struct Open {
 
 /// what happens next: a skill call for most beans, a dated chore for life ones
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Next {
     /// the step
     pub text: String,
@@ -107,7 +111,6 @@ pub struct Next {
 
 /// work product: an email, a script, a map
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Draft {
     /// lowercase-kebab, unique in the bean, what `open` and `next` link by
     pub id: String,
@@ -121,7 +124,6 @@ pub struct Draft {
 
 /// a repo the stream works in
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Repo {
     /// absolute. the first one that exists is where the agent launches
     pub path: PathBuf,
@@ -137,7 +139,6 @@ pub struct Repo {
 
 /// where the plan docs are
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Plan {
     /// the prd
     pub prd: Option<PathBuf>,
@@ -151,7 +152,6 @@ pub struct Plan {
 
 /// something that happened
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct LogEntry {
     /// when
     pub date: Date,

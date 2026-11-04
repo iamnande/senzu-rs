@@ -96,3 +96,23 @@ fn one_bad_bean_warns_and_the_rest_still_list() {
     let rows: Vec<Value> = serde_json::from_slice(&out.get_output().stdout).unwrap();
     assert_eq!(rows.len(), 3);
 }
+
+/// a field from a newer senzu is a warning when reading, not a missing bean
+#[test]
+fn an_unknown_field_still_lists_with_a_warning() {
+    let world = World::new();
+    let mut bean = world.fixture("harden-the-hut");
+    bean["vibes"] = "immaculate".into();
+    world.write("harden-the-hut.json", &bean);
+    let out = world
+        .senzu()
+        .arg("ls")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("unknown field `vibes`"));
+    let rows: Vec<Value> = serde_json::from_slice(&out.get_output().stdout).unwrap();
+    assert!(
+        rows.iter().any(|r| r["slug"] == "harden-the-hut"),
+        "{rows:?}"
+    );
+}

@@ -162,3 +162,30 @@ fn the_beans_dir_is_untouched() {
     world.senzu().arg("check").assert().success();
     assert_eq!(before, snapshot());
 }
+
+#[test]
+fn rejects_an_unknown_field_deep_in_the_bean() {
+    let mut bean = World::new().fixture("crab-shell");
+    bean["open"][0]["vibes"] = json!("immaculate");
+    rejects("crab-shell.json", &bean, "unknown field `open.0.vibes`");
+}
+
+#[test]
+fn rejects_a_bean_with_no_schema() {
+    let mut bean = World::new().fixture("harden-the-hut");
+    bean.as_object_mut().unwrap().remove("schema");
+    rejects("harden-the-hut.json", &bean, "missing field `schema`");
+}
+
+/// a newer schema may not fit the types, so it's refused before they're tried
+#[test]
+fn rejects_a_newer_schema_and_says_to_upgrade() {
+    let mut bean = World::new().fixture("harden-the-hut");
+    bean["schema"] = json!(2);
+    bean["phase"] = json!({ "renamed": "in schema 2" });
+    rejects(
+        "harden-the-hut.json",
+        &bean,
+        "schema 2, this senzu reads 1, upgrade senzu",
+    );
+}
