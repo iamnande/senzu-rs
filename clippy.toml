@@ -15,10 +15,10 @@ disallowed-macros = [
   { path = "log::error", reason = "use tracing", replacement = "tracing::error" },
 ]
 
-# the environment comes in through config::Env and launch::Host, so tests can hand one in
+# the environment comes in through config::Env, so tests can hand one in
 disallowed-methods = [
-  { path = "std::env::var", reason = "read it in config::Env or launch::Host" },
-  { path = "std::env::var_os", reason = "read it in config::Env or launch::Host" },
+  { path = "std::env::var", reason = "read it in config::Env" },
+  { path = "std::env::var_os", reason = "read it in config::Env" },
   { path = "std::env::set_var", reason = "unsound; pass the value in instead" },
   { path = "std::env::remove_var", reason = "unsound; pass the value in instead" },
 ]

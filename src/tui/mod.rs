@@ -7,7 +7,8 @@ use std::path::Path;
 use crossterm::event::{self, Event, KeyEventKind};
 use ratatui::DefaultTerminal;
 
-use crate::launch::{self, Host, Launch, Launcher, Profile};
+use crate::config::Env;
+use crate::launch::{self, Launch, Launcher, Profile};
 use crate::load;
 use app::{Action, Board};
 
@@ -22,12 +23,12 @@ enum Outcome {
 #[derive(Clone, Copy)]
 struct Ctx<'a> {
     beans_dir: &'a Path,
-    home: &'a Path,
+    env: &'a Env,
     profile: Profile,
 }
 
 /// the tui is home base: it stays open, and enter sends the agent somewhere else
-pub(crate) fn run(beans_dir: &Path, home: &Path, profile: Profile) -> anyhow::Result<()> {
+pub(crate) fn run(beans_dir: &Path, env: &Env, profile: Profile) -> anyhow::Result<()> {
     let mut board = Board::new(Vec::new());
     reload(&mut board, beans_dir)?;
     // init sets raw mode and the alternate screen, and hooks panics to undo both
@@ -35,7 +36,7 @@ pub(crate) fn run(beans_dir: &Path, home: &Path, profile: Profile) -> anyhow::Re
     title::push();
     let ctx = Ctx {
         beans_dir,
-        home,
+        env,
         profile,
     };
     let outcome = event_loop(&mut terminal, &mut board, ctx);
@@ -54,7 +55,7 @@ fn event_loop(
 ) -> anyhow::Result<Outcome> {
     loop {
         let view = ui::View {
-            home: ctx.home,
+            home: &ctx.env.home,
             today: jiff::Zoned::now().date(),
             agent: ctx.profile.agent.name,
             launcher: ctx.profile.launcher,
@@ -92,7 +93,7 @@ fn event_loop(
 fn launch_from(board: &mut Board, slug: &str, ctx: Ctx) -> Option<Outcome> {
     let bean = board.beans.iter().find(|b| b.slug == slug)?;
     let planned = match launch::plan(bean, ctx.profile, ctx.beans_dir)
-        .and_then(|p| launch::preflight(&p, ctx.profile.agent, &Host::from_process()).map(|()| p))
+        .and_then(|p| launch::preflight(&p, ctx.profile.agent, ctx.env).map(|()| p))
     {
         Ok(p) => p,
         Err(e) => {

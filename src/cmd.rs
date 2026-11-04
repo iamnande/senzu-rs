@@ -90,14 +90,14 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
                 println!("{}", serde_json::to_string_pretty(&planned)?);
                 return Ok(ExitCode::SUCCESS);
             }
-            launch::preflight(&planned, profile.agent, &launch::Host::from_process())?;
+            launch::preflight(&planned, profile.agent, &env)?;
             launch::run(&planned)?;
             Ok(ExitCode::SUCCESS)
         }
         None if tty => {
             // unknown profiles are a usage mistake, caught before the screen changes
             let profile = launch::Profile::resolve(&settings.agent, &settings.launch)?;
-            tui::run(&settings.beans, &env.home, profile)?;
+            tui::run(&settings.beans, &env, profile)?;
             Ok(ExitCode::SUCCESS)
         }
         None => {
