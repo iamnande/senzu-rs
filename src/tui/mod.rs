@@ -75,12 +75,14 @@ fn event_loop(
             None => {}
             Some(Action::Quit) => return Ok(Outcome::Quit),
             Some(Action::Reload) => {
+                let _span = tracing::info_span!("reload").entered();
                 reload(board, ctx.beans_dir)?;
                 if board.status.is_none() {
                     board.status = Some(format!("reloaded {} beans", board.beans.len()));
                 }
             }
             Some(Action::Launch(slug)) => {
+                let _span = tracing::info_span!("open", slug = %slug).entered();
                 if let Some(outcome) = launch_from(board, &slug, ctx) {
                     return Ok(outcome);
                 }
@@ -97,6 +99,7 @@ fn launch_from(board: &mut Board, slug: &str, ctx: Ctx) -> Option<Outcome> {
     {
         Ok(p) => p,
         Err(e) => {
+            tracing::error!(error = %e, "launch refused");
             board.status = Some(e.to_string());
             return None;
         }
@@ -106,7 +109,10 @@ fn launch_from(board: &mut Board, slug: &str, ctx: Ctx) -> Option<Outcome> {
     }
     board.status = Some(match launch::run(&planned) {
         Ok(()) => format!("opened {slug} in a new pane"),
-        Err(e) => e.to_string(),
+        Err(e) => {
+            tracing::error!(error = %e, "launch failed");
+            e.to_string()
+        }
     });
     None
 }

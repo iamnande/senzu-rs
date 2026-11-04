@@ -111,3 +111,77 @@ fn unmakeable_log_dir_still_runs() {
         .success()
         .stdout("ok 5 beans\n");
 }
+
+#[test]
+fn every_log_line_is_json_under_the_root_span() {
+    let world = common::World::new();
+    world.senzu().arg("ls").assert().success();
+    let lines = common::log_lines(world.home.path());
+    let loaded = lines
+        .iter()
+        .find(|l| l["fields"]["message"] == "loaded")
+        .unwrap();
+    let names: Vec<_> = loaded["spans"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["senzu", "load"]);
+    let root = common::root_close(world.home.path());
+    assert_eq!(root["span"]["cmd"], "ls");
+    assert_eq!(root["span"]["exit_code"], 0);
+}
+
+#[test]
+fn config_errors_reach_the_log() {
+    let home = TempDir::new().unwrap();
+    write_config(home.path(), "nope = 1\n");
+    senzu(home.path()).arg("ls").assert().code(2);
+    let lines = common::log_lines(home.path());
+    let failed = lines
+        .iter()
+        .find(|l| l["level"] == "ERROR" && l["fields"]["message"] == "failed")
+        .unwrap();
+    assert!(
+        failed["fields"]["error"].as_str().unwrap().contains("nope"),
+        "{failed}"
+    );
+    assert_eq!(common::root_close(home.path())["span"]["exit_code"], 2);
+}
+
+#[test]
+fn usage_errors_reach_the_log() {
+    let home = TempDir::new().unwrap();
+    senzu(home.path()).arg("--bogus").assert().code(2);
+    let lines = common::log_lines(home.path());
+    assert!(
+        lines
+            .iter()
+            .any(|l| l["level"] == "ERROR" && l["fields"]["message"] == "usage"),
+        "{lines:?}"
+    );
+}
+
+#[test]
+fn help_is_not_an_error() {
+    let home = TempDir::new().unwrap();
+    senzu(home.path()).arg("--help").assert().success();
+    let lines = common::log_lines(home.path());
+    assert!(!lines.iter().any(|l| l["level"] == "ERROR"), "{lines:?}");
+}
+
+#[test]
+fn a_bad_bean_is_info_with_an_outcome() {
+    let world = common::World::new();
+    std::fs::write(world.beans().join("broken.json"), "{").unwrap();
+    world.senzu().arg("ls").assert().success();
+    let lines = common::log_lines(world.home.path());
+    let bad = lines
+        .iter()
+        .find(|l| l["fields"]["message"] == "bad bean")
+        .unwrap();
+    assert_eq!(bad["level"], "INFO");
+    assert_eq!(bad["fields"]["outcome"], "skipped");
+    assert!(!lines.iter().any(|l| l["level"] == "ERROR"), "{lines:?}");
+}

@@ -125,9 +125,9 @@ fn rejects_a_date_that_isnt_one() {
 fn the_log_gets_a_load_span_but_not_one_per_bean() {
     let world = World::new();
     world.senzu().arg("check").assert().success();
-    let log = world.log();
-    assert!(log.contains("load{dir="), "log was: {log}");
-    assert!(!log.contains("parse{file="), "log was: {log}");
+    let spans = common::closed_spans(world.home.path());
+    assert!(spans.iter().any(|s| s == "load"), "{spans:?}");
+    assert!(!spans.iter().any(|s| s == "parse"), "{spans:?}");
 }
 
 #[test]
@@ -139,8 +139,8 @@ fn debug_brings_back_the_parse_spans() {
         .arg("check")
         .assert()
         .success();
-    let log = world.log();
-    assert!(log.contains("parse{file="), "log was: {log}");
+    let spans = common::closed_spans(world.home.path());
+    assert!(spans.iter().any(|s| s == "parse"), "{spans:?}");
 }
 
 /// R12: senzu reads beans, it never touches them

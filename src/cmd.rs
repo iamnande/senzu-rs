@@ -6,11 +6,11 @@
     reason = "the cli's output lives here"
 )]
 
-use std::io::IsTerminal;
+use std::io::IsTerminal as _;
 use std::path::Path;
 use std::process::ExitCode;
 
-use clap::Parser;
+use clap::Parser as _;
 
 use crate::cli::{Cli, Cmd};
 use crate::config::{self, Config, ConfigError, Env, Overrides};
@@ -18,36 +18,66 @@ use crate::load::{self, Harvest};
 use crate::output::{self, Filter};
 use crate::{current, launch, telemetry, tui};
 
-/// parse the args, run the command, turn any error into a message and an exit code
+/// logging first, so usage and config errors land in the log too. one root
+/// span per run, closed with its exit code
 pub(crate) fn main() -> ExitCode {
-    // clap handles --help, --version and usage errors (exit 2) on its own
-    let cli = Cli::parse();
-    match run(cli) {
-        Ok(code) => code,
+    let env = Env::from_process();
+    telemetry::init(&env.state_dir());
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
         Err(e) => {
-            eprintln!("senzu: {e:#}");
-            exit_code(&e)
+            // --help and --version come through here too, and aren't failures
+            if e.use_stderr() {
+                tracing::error!(kind = ?e.kind(), "usage");
+            }
+            e.exit();
         }
+    };
+    let tty = std::io::stdout().is_terminal();
+    let root = tracing::info_span!(
+        "senzu",
+        cmd = cmd_name(cli.cmd.as_ref(), tty),
+        version = env!("CARGO_PKG_VERSION"),
+        exit_code = tracing::field::Empty,
+    );
+    let _root = root.enter();
+    let code = run(cli, &env, tty).unwrap_or_else(|e| {
+        tracing::error!(error = format!("{e:#}"), "failed");
+        eprintln!("senzu: {e:#}");
+        exit_code(&e)
+    });
+    root.record("exit_code", code);
+    ExitCode::from(code)
+}
+
+fn cmd_name(cmd: Option<&Cmd>, tty: bool) -> &'static str {
+    match cmd {
+        Some(Cmd::Ls { .. }) => "ls",
+        Some(Cmd::Show { .. }) => "show",
+        Some(Cmd::Open { .. }) => "open",
+        Some(Cmd::Check) => "check",
+        None if tty => "tui",
+        None => "current",
     }
 }
 
-fn run(cli: Cli) -> anyhow::Result<ExitCode> {
-    let env = Env::from_process();
-    let config = Config::load(&env.config_path())?;
-    let over = Overrides {
-        beans: cli.beans,
-        agent: cli.agent,
-        launch: cli.launch,
-    };
-    let _guard = telemetry::init(&env.state_dir());
-    let settings = config::resolve(over, config, &env)?;
-    tracing::info!(
-        beans = %settings.beans.display(),
-        agent = %settings.agent,
-        launch = %settings.launch,
-        "settings resolved"
-    );
-    let tty = std::io::stdout().is_terminal();
+fn run(cli: Cli, env: &Env, tty: bool) -> anyhow::Result<u8> {
+    let settings = tracing::info_span!("config").in_scope(|| {
+        let config = Config::load(&env.config_path())?;
+        let over = Overrides {
+            beans: cli.beans,
+            agent: cli.agent,
+            launch: cli.launch,
+        };
+        let settings = config::resolve(over, config, env)?;
+        tracing::info!(
+            beans = %settings.beans.display(),
+            agent = %settings.agent,
+            launch = %settings.launch,
+            "settings resolved"
+        );
+        anyhow::Ok(settings)
+    })?;
 
     match cli.cmd {
         Some(Cmd::Check) => check(&settings.beans),
@@ -70,7 +100,7 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             } else {
                 print!("{}", output::ls_table(&picked, term_width()));
             }
-            Ok(ExitCode::SUCCESS)
+            Ok(0)
         }
         Some(Cmd::Show { slug, json }) => {
             let bean = found(load::one(&settings.beans, &slug)?);
@@ -79,7 +109,7 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             } else {
                 print!("{}", output::show(&bean, &env.home));
             }
-            Ok(ExitCode::SUCCESS)
+            Ok(0)
         }
         Some(Cmd::Open { slug, dry_run }) => {
             let profile = launch::Profile::resolve(&settings.agent, &settings.launch)?;
@@ -88,17 +118,17 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             tracing::info!(program = %planned.program, args = ?planned.args, cwd = %planned.cwd.display(), "launch planned");
             if dry_run {
                 println!("{}", serde_json::to_string_pretty(&planned)?);
-                return Ok(ExitCode::SUCCESS);
+                return Ok(0);
             }
-            launch::preflight(&planned, profile.agent, &env)?;
+            launch::preflight(&planned, profile.agent, env)?;
             launch::run(&planned)?;
-            Ok(ExitCode::SUCCESS)
+            Ok(0)
         }
         None if tty => {
             // unknown profiles are a usage mistake, caught before the screen changes
             let profile = launch::Profile::resolve(&settings.agent, &settings.launch)?;
-            tui::run(&settings.beans, &env, profile)?;
-            Ok(ExitCode::SUCCESS)
+            tui::run(&settings.beans, env, profile)?;
+            Ok(0)
         }
         None => {
             let harvest = load_and_warn(&settings.beans)?;
@@ -110,24 +140,24 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             for bean in here {
                 print!("{}", output::brief(bean, &env.home));
             }
-            Ok(ExitCode::SUCCESS)
+            Ok(0)
         }
     }
 }
 
 /// `ok N beans`, or one line per problem and exit 1
-fn check(dir: &Path) -> anyhow::Result<ExitCode> {
+fn check(dir: &Path) -> anyhow::Result<u8> {
     let harvest = load::load(dir)?;
     warn_markdown(harvest.markdown);
     // check is the strict one: a field senzu doesn't know fails it
     if harvest.errors.is_empty() && harvest.unknown.is_empty() {
         println!("ok {} beans", harvest.beans.len());
-        return Ok(ExitCode::SUCCESS);
+        return Ok(0);
     }
     for e in harvest.errors.iter().chain(&harvest.unknown) {
         println!("{e}");
     }
-    Ok(ExitCode::FAILURE)
+    Ok(1)
 }
 
 /// load for reading: bad beans are a warning, the good ones carry on
@@ -163,14 +193,14 @@ fn term_width() -> usize {
 }
 
 /// config and profile mistakes are usage mistakes (2), an unknown slug is 3, the rest is 1
-fn exit_code(e: &anyhow::Error) -> ExitCode {
+fn exit_code(e: &anyhow::Error) -> u8 {
     if e.downcast_ref::<ConfigError>().is_some()
         || e.downcast_ref::<launch::UnknownProfile>().is_some()
     {
-        ExitCode::from(2)
+        2
     } else if matches!(e.downcast_ref(), Some(load::OneError::Unknown(_))) {
-        ExitCode::from(3)
+        3
     } else {
-        ExitCode::FAILURE
+        1
     }
 }

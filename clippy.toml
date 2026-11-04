@@ -7,12 +7,18 @@ allow-expect-in-tests = true
 allow-print-in-tests = true
 allow-unwrap-in-tests = true
 
+# error, info and debug only. error means the command failed
 disallowed-macros = [
-  { path = "log::trace", reason = "use tracing", replacement = "tracing::trace" },
-  { path = "log::debug", reason = "use tracing", replacement = "tracing::debug" },
-  { path = "log::info", reason = "use tracing", replacement = "tracing::info" },
-  { path = "log::warn", reason = "use tracing", replacement = "tracing::warn" },
-  { path = "log::error", reason = "use tracing", replacement = "tracing::error" },
+  { path = "log::log", reason = "senzu logs through tracing" },
+  { path = "log::trace", reason = "senzu logs through tracing" },
+  { path = "log::debug", reason = "senzu logs through tracing" },
+  { path = "log::info", reason = "senzu logs through tracing" },
+  { path = "log::warn", reason = "senzu logs through tracing" },
+  { path = "log::error", reason = "senzu logs through tracing" },
+  { path = "tracing::trace", reason = "use debug" },
+  { path = "tracing::trace_span", reason = "use debug_span" },
+  { path = "tracing::warn", reason = "use info with an outcome, or error if it failed" },
+  { path = "tracing::warn_span", reason = "use info_span" },
 ]
 
 # the environment comes in through config::Env, so tests can hand one in
