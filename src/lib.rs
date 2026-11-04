@@ -2,6 +2,9 @@
 //!
 //! the bean types and the loader are public, so another front end (a web ui)
 //! can share them. the rest is the cli, reached through [`run`].
+//!
+//! an error's message already ends in its cause, so print it with `{}`.
+//! anyhow's `{:#}` walks the cause chain and would say it twice.
 
 pub mod bean;
 pub mod load;

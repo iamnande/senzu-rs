@@ -42,8 +42,8 @@ pub(crate) fn main() -> ExitCode {
     );
     let _root = root.enter();
     let code = run(cli, &env, tty).unwrap_or_else(|e| {
-        tracing::error!(error = format!("{e:#}"), "failed");
-        eprintln!("senzu: {e:#}");
+        tracing::error!(error = %e, "failed");
+        eprintln!("senzu: {e}");
         exit_code(&e)
     });
     root.record("exit_code", code);

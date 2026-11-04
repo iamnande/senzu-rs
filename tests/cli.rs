@@ -32,6 +32,15 @@ fn unknown_config_key_exits_2_and_names_it() {
 }
 
 #[test]
+fn a_config_error_says_it_once() {
+    let home = TempDir::new().unwrap();
+    write_config(home.path(), "nope = 1\n");
+    let out = senzu(home.path()).arg("ls").output().unwrap();
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert_eq!(stderr.matches("unknown field").count(), 1, "{stderr}");
+}
+
+#[test]
 fn no_beans_dir_set_exits_2_and_says_how_to_set_one() {
     let home = TempDir::new().unwrap();
     senzu(home.path())
