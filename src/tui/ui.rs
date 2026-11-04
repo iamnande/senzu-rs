@@ -308,9 +308,8 @@ fn now_panel(frame: &mut Frame, bean: &Bean, area: Rect) {
         line.push(Span::styled(format!("  ·  {}", fit(note, room)), fg(MUTED)));
     }
     frame.render_widget(Paragraph::new(Line::from(line)), priority);
-    // octants: the logo's pixel style at half its height, so the phase doesn't
-    // shout over it. ghostty draws these glyphs itself; other terminals need a font
-    // with unicode 16's octants
+    // octants, half the logo's height. needs a font with unicode 16 octants,
+    // ghostty draws its own
     frame.render_widget(
         BigText::builder()
             .pixel_size(PixelSize::Octant)

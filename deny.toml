@@ -16,7 +16,6 @@ allow = [
   "Zlib",
 ]
 confidence-threshold = 0.8
-# senzu is agpl-3.0-only and never published, so skip checking its own license
 private = { ignore = true }
 
 [bans]
