@@ -51,7 +51,7 @@ pub(crate) enum Cmd {
     /// launch the agent in a bean's worktree
     Open {
         slug: String,
-        /// print the argv and cwd as json, launch nothing
+        /// print the command and cwd as json, launch nothing
         #[arg(long)]
         dry_run: bool,
     },
