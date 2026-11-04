@@ -58,10 +58,14 @@ fn a_branch_named_for_the_slug_matches() {
     let world = World::new();
     let repo = world.home.path().join("some-clone");
     std::fs::create_dir(&repo).unwrap();
+    // a clean env, or an inherited GIT_DIR (rebase -x, hooks) points git at
+    // the real repo instead of this one
     let git = Command::new("git")
         .args(["init", "-q", "-b", "crab/Tidy-The-Tidepool"])
         .current_dir(&repo)
+        .env_clear()
         .env("HOME", world.home.path())
+        .env("PATH", std::env::var_os("PATH").unwrap())
         .status()
         .unwrap();
     assert!(git.success());
