@@ -121,6 +121,11 @@ fn empty_note(board: &Board) -> String {
     }
 }
 
+/// a count as terminal cells, pinned at the max instead of wrapping
+fn cells(n: usize) -> u16 {
+    u16::try_from(n).unwrap_or(u16::MAX)
+}
+
 /// cut to `width` characters, with an ellipsis when something got cut
 fn fit(s: &str, width: usize) -> String {
     if s.chars().count() <= width {
@@ -252,7 +257,7 @@ fn list_items(board: &Board, today: Date, width: usize) -> (Vec<ListItem<'static
 fn detail(frame: &mut Frame, stream: Stream, area: Rect) {
     let bean = stream.bean;
     // label, a blank row, the items, a blank row
-    let open_h = u16::try_from(bean.open.len().max(1)).unwrap_or(1) + 3;
+    let open_h = cells(bean.open.len().max(1)).saturating_add(3);
     let [top, _, open, _, log] = Layout::vertical([
         Constraint::Length(9),
         Constraint::Length(1),
@@ -460,10 +465,7 @@ fn status_bar(frame: &mut Frame, screen: Screen, area: Rect) {
         right.push(Span::styled(format!(" {v}"), fg(MUTED)));
     }
     right.push(Span::raw(" "));
-    let width: u16 = right
-        .iter()
-        .map(|s| u16::try_from(s.width()).unwrap_or(0))
-        .sum();
+    let width = cells(right.iter().map(Span::width).sum());
     let [l, r] = Layout::horizontal([Constraint::Min(1), Constraint::Length(width)]).areas(area);
 
     // a status message takes the left side, otherwise the launcher does
@@ -545,17 +547,19 @@ fn draft_lines(board: &Board, bean: &Bean, n: usize) -> (String, Vec<Line<'stati
 /// a raised panel in the middle, with everything behind it faded
 fn popup(frame: &mut Frame, area: Rect, popup: Popup) {
     let Popup { title, lines } = popup;
+    // at least 30 wide, unless the screen can't fit that
+    let max_w = usize::from(area.width.saturating_sub(8));
     let width = lines
         .iter()
         .map(Line::width)
         .max()
         .unwrap_or(0)
-        .clamp(30, usize::from(area.width.saturating_sub(8)));
+        .clamp(30.min(max_w), max_w);
     let height = lines.len().min(usize::from(area.height.saturating_sub(4)));
-    let [v] = Layout::vertical([Constraint::Length(u16::try_from(height).unwrap_or(0) + 4)])
+    let [v] = Layout::vertical([Constraint::Length(cells(height).saturating_add(4))])
         .flex(Flex::Center)
         .areas(area);
-    let [r] = Layout::horizontal([Constraint::Length(u16::try_from(width).unwrap_or(0) + 6)])
+    let [r] = Layout::horizontal([Constraint::Length(cells(width).saturating_add(6))])
         .flex(Flex::Center)
         .areas(v);
 
@@ -820,5 +824,15 @@ mod tests {
         );
         board.markdown = 0;
         assert!(text(&draw(&board, Launcher::Zellij)).contains("no beans in this dir"));
+    }
+
+    #[test]
+    fn a_narrow_terminal_still_draws_the_keys_popup() {
+        let mut board = board();
+        key(&mut board, '?');
+        for w in [1, 20, 37] {
+            let mut t = Term::new(TestBackend::new(w, 10)).unwrap();
+            t.draw(|f| render(f, &board, view(Launcher::Exec))).unwrap();
+        }
     }
 }
