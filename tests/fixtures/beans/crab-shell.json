@@ -1,0 +1,65 @@
+{
+  "slug": "crab-shell",
+  "title": "a shell for the crab to live in",
+  "phase": "execute",
+  "priority": "urgent",
+  "priority_note": "first of all tracks",
+  "issue": null,
+  "thread": null,
+  "repos": [
+    {
+      "path": "/nowhere/worktrees/crab-shell",
+      "repo": "crab-rs",
+      "branch": "crab/crab-shell",
+      "base": "origin/main 244ffc6",
+      "note": null
+    }
+  ],
+  "plan": {
+    "prd": "/nowhere/docs/prd.md",
+    "spec": null,
+    "page": null,
+    "note": null
+  },
+  "prs": [],
+  "next": {
+    "text": "/iam-execute crab-shell: checkpoint 3",
+    "draft": null
+  },
+  "context": [
+    {
+      "text": "the old shell is slow and has no navigation.",
+      "source": "the crab",
+      "date": "2026-11-03"
+    }
+  ],
+  "decisions": [
+    {
+      "text": "rust, for the practice.",
+      "by": "the crab",
+      "date": "2026-11-03"
+    }
+  ],
+  "open": [
+    {
+      "text": "send the landlord the move-in email.",
+      "blocks": false,
+      "draft": "move-in-email"
+    }
+  ],
+  "drafts": [
+    {
+      "id": "move-in-email",
+      "title": "the move-in email",
+      "date": "2026-11-03",
+      "body": "hi! the crab is moving in on saturday."
+    }
+  ],
+  "log": [
+    {
+      "date": "2026-11-03",
+      "phase": "ground",
+      "text": "created."
+    }
+  ]
+}

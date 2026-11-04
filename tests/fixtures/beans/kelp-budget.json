@@ -1,0 +1,14 @@
+{
+  "slug": "kelp-budget",
+  "title": "a budget for kelp",
+  "phase": "ground",
+  "priority": "medium",
+  "priority_note": "bad if missed, so the monthly kelp run",
+  "issue": null,
+  "thread": null,
+  "plan": null,
+  "next": {
+    "text": "buy kelp by 2026-11-15",
+    "draft": null
+  }
+}

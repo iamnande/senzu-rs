@@ -1,0 +1,21 @@
+{
+  "slug": "tidy-the-tidepool",
+  "title": "the tidepool is a mess",
+  "phase": "ground",
+  "priority": "high",
+  "issue": "TIDE-12",
+  "thread": null,
+  "plan": null,
+  "next": {
+    "text": "/iam-ground tidy-the-tidepool: what counts as tidy",
+    "draft": "tidy-map"
+  },
+  "drafts": [
+    {
+      "id": "tidy-map",
+      "title": "a map of the mess",
+      "date": "2026-11-02",
+      "body": "- rocks\n- more rocks"
+    }
+  ]
+}

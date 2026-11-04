@@ -1,7 +1,10 @@
+mod bean;
 mod cli;
 mod config;
+mod load;
 mod telemetry;
 
+use std::path::Path;
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -39,13 +42,34 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
     );
 
     let name = match cli.cmd {
+        Some(Cmd::Check) => return check(&settings.beans),
         None => "senzu",
         Some(Cmd::Ls { .. }) => "ls",
         Some(Cmd::Show { .. }) => "show",
         Some(Cmd::Open { .. }) => "open",
-        Some(Cmd::Check) => "check",
     };
     anyhow::bail!("{name}: not built yet")
+}
+
+/// `ok N beans`, or one line per problem and exit 1
+fn check(dir: &Path) -> anyhow::Result<ExitCode> {
+    let harvest = load::load(dir)?;
+    warn_markdown(harvest.markdown);
+    if harvest.errors.is_empty() {
+        println!("ok {} beans", harvest.beans.len());
+        return Ok(ExitCode::SUCCESS);
+    }
+    for e in &harvest.errors {
+        println!("{e}");
+    }
+    Ok(ExitCode::FAILURE)
+}
+
+/// md beans are the old format, here until the migration clears them out
+fn warn_markdown(count: usize) {
+    if count > 0 {
+        eprintln!("senzu: ignoring {count} markdown beans");
+    }
 }
 
 /// config mistakes are usage mistakes (2), everything else is a plain failure (1)

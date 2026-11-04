@@ -1,0 +1,13 @@
+{
+  "slug": "harden-the-hut",
+  "title": "locks on every door of the hut",
+  "phase": "plan",
+  "priority": "urgent",
+  "issue": null,
+  "thread": null,
+  "plan": null,
+  "next": {
+    "text": "/iam-plan harden-the-hut: the tech spec",
+    "draft": null
+  }
+}

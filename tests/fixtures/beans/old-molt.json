@@ -1,0 +1,20 @@
+{
+  "slug": "old-molt",
+  "title": "shed the old shell",
+  "phase": "done",
+  "priority": "low",
+  "issue": null,
+  "thread": null,
+  "plan": null,
+  "next": {
+    "text": "nothing, it's molted",
+    "draft": null
+  },
+  "log": [
+    {
+      "date": "2026-10-01",
+      "phase": "done",
+      "text": "molted."
+    }
+  ]
+}
