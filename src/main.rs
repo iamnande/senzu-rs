@@ -1,29 +1,14 @@
-mod bean;
-mod cli;
-mod config;
-mod current;
-mod launch;
-mod load;
-mod output;
-mod telemetry;
-mod tui;
-
 use std::io::IsTerminal;
 use std::path::Path;
 use std::process::ExitCode;
 
 use clap::Parser;
 
-use crate::bean::Bean;
-use crate::cli::{Cli, Cmd};
-use crate::config::{Config, ConfigError, Env, Overrides};
-use crate::load::Harvest;
-use crate::output::Filter;
-
-/// a slug no bean has
-#[derive(Debug, thiserror::Error)]
-#[error("no bean named {0:?}")]
-struct UnknownSlug(String);
+use senzu::cli::{Cli, Cmd};
+use senzu::config::{self, Config, ConfigError, Env, Overrides};
+use senzu::load::{self, Harvest};
+use senzu::output::{self, Filter};
+use senzu::{current, launch, telemetry, tui};
 
 fn main() -> ExitCode {
     // clap handles --help, --version and usage errors (exit 2) on its own
@@ -79,20 +64,18 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         Some(Cmd::Show { slug, json }) => {
-            let harvest = load_and_warn(&settings.beans)?;
-            let bean = find(&harvest.beans, &slug)?;
+            let bean = load::one(&settings.beans, &slug)?;
             if json || !tty {
-                println!("{}", serde_json::to_string_pretty(bean)?);
+                println!("{}", serde_json::to_string_pretty(&bean)?);
             } else {
-                print!("{}", output::show(bean, &env.home));
+                print!("{}", output::show(&bean, &env.home));
             }
             Ok(ExitCode::SUCCESS)
         }
         Some(Cmd::Open { slug, dry_run }) => {
             let profile = launch::Profile::resolve(&settings.agent, &settings.launch)?;
-            let harvest = load_and_warn(&settings.beans)?;
-            let bean = find(&harvest.beans, &slug)?;
-            let planned = launch::plan(bean, profile, &settings.beans)?;
+            let bean = load::one(&settings.beans, &slug)?;
+            let planned = launch::plan(&bean, profile, &settings.beans)?;
             tracing::info!(argv = ?planned.argv, cwd = %planned.cwd.display(), "launch planned");
             if dry_run {
                 println!("{}", serde_json::to_string_pretty(&planned)?);
@@ -154,13 +137,6 @@ fn warn_markdown(count: usize) {
     }
 }
 
-fn find<'a>(beans: &'a [Bean], slug: &str) -> Result<&'a Bean, UnknownSlug> {
-    beans
-        .iter()
-        .find(|b| b.slug == slug)
-        .ok_or_else(|| UnknownSlug(slug.to_owned()))
-}
-
 fn term_width() -> usize {
     crossterm::terminal::size()
         .map(|(cols, _)| usize::from(cols))
@@ -173,7 +149,7 @@ fn exit_code(e: &anyhow::Error) -> ExitCode {
         || e.downcast_ref::<launch::UnknownProfile>().is_some()
     {
         ExitCode::from(2)
-    } else if e.downcast_ref::<UnknownSlug>().is_some() {
+    } else if matches!(e.downcast_ref(), Some(load::OneError::Unknown(_))) {
         ExitCode::from(3)
     } else {
         ExitCode::FAILURE

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::bean::Bean;
+use crate::bean::{self, Bean};
 
 /// one bean that didn't make it. the rest of the dir still loads
 #[derive(Debug, thiserror::Error)]
@@ -29,6 +29,27 @@ pub enum DirError {
         path: PathBuf,
         source: std::io::Error,
     },
+}
+
+/// why `one` came back empty-handed
+#[derive(Debug, thiserror::Error)]
+pub enum OneError {
+    /// no `<slug>.json`, or a slug that could never name one. exit 3
+    #[error("no bean named {0:?}")]
+    Unknown(String),
+    #[error(transparent)]
+    Dir(#[from] DirError),
+    /// the file is there but bad: every problem, one per line
+    #[error("{}", lines(.0))]
+    Bad(Vec<LoadError>),
+}
+
+fn lines(errors: &[LoadError]) -> String {
+    errors
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[derive(Debug, Default)]
@@ -73,6 +94,21 @@ pub fn load(dir: &Path) -> Result<Harvest, DirError> {
         "loaded"
     );
     Ok(harvest)
+}
+
+/// read just `<slug>.json`: the file name is the key, so the rest of the dir
+/// never gets opened. the slug is checked first, which also keeps it from
+/// walking out of the dir (`../x` isn't kebab-case)
+#[tracing::instrument(name = "load", skip_all, fields(dir = %dir.display(), slug))]
+pub fn one(dir: &Path, slug: &str) -> Result<Bean, OneError> {
+    if !dir.is_dir() {
+        return Err(DirError::NotFound(dir.to_owned()).into());
+    }
+    let path = dir.join(format!("{slug}.json"));
+    if !bean::is_slug(slug) || !path.is_file() {
+        return Err(OneError::Unknown(slug.to_owned()));
+    }
+    parse(&path).map_err(OneError::Bad)
 }
 
 // debug, so a normal run doesn't write a line per bean
