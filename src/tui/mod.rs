@@ -27,7 +27,7 @@ struct Ctx<'a> {
     profile: Profile,
 }
 
-/// the tui is home base: it stays open, and enter sends the agent somewhere else
+/// exec hands the terminal to the agent, zellij opens a pane and comes back
 pub(crate) fn run(beans_dir: &Path, env: &Env, profile: Profile) -> anyhow::Result<()> {
     let mut board = Board::new(Vec::new());
     reload(&mut board, beans_dir)?;

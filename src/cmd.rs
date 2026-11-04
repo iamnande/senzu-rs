@@ -187,7 +187,7 @@ fn found(found: load::Found) -> crate::bean::Bean {
     found.bean
 }
 
-/// md beans are the old format, here until the migration clears them out
+/// md beans are the old format
 fn warn_markdown(count: usize) {
     if count > 0 {
         eprintln!("senzu: ignoring {count} markdown beans");

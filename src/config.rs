@@ -27,7 +27,6 @@ pub(crate) enum ConfigError {
         path: PathBuf,
         source: toml::de::Error,
     },
-    /// no guessing where someone keeps their beans
     #[error("no beans dir: set --beans, SENZU_BEANS, or beans in {}", .0.display())]
     NoBeans(PathBuf),
 }

@@ -143,7 +143,7 @@ fn debug_brings_back_the_parse_spans() {
     assert!(spans.iter().any(|s| s == "parse"), "{spans:?}");
 }
 
-/// R12: senzu reads beans, it never touches them
+/// senzu reads beans, it never touches them
 #[test]
 fn the_beans_dir_is_untouched() {
     let world = World::new();

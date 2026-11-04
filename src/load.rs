@@ -11,7 +11,7 @@ pub enum LoadError {
     /// the file couldn't be read
     #[error("{}: {source}", path.display())]
     Read {
-        /// the bean's file
+        /// path to the bean
         path: PathBuf,
         /// what the os said
         source: std::io::Error,
@@ -19,7 +19,7 @@ pub enum LoadError {
     /// the json doesn't match the schema
     #[error("{}: {source}", path.display())]
     Parse {
-        /// the bean's file
+        /// path to the bean
         path: PathBuf,
         /// what serde said, with line and column
         source: serde_json::Error,
@@ -27,7 +27,7 @@ pub enum LoadError {
     /// written for a schema this senzu doesn't read
     #[error("{}: schema {found}, this senzu reads {SCHEMA}{}", path.display(), schema_hint(*found))]
     Schema {
-        /// the bean's file
+        /// path to the bean
         path: PathBuf,
         /// the schema the bean says it's on
         found: u32,
@@ -35,7 +35,7 @@ pub enum LoadError {
     /// a field this senzu doesn't know. the bean still loads, `check` fails
     #[error("{}: unknown field `{field}`, from a newer senzu? upgrade, or drop it", path.display())]
     UnknownField {
-        /// the bean's file
+        /// path to the bean
         path: PathBuf,
         /// where in the bean, like `open.0.vibes`
         field: String,
@@ -43,7 +43,7 @@ pub enum LoadError {
     /// it parsed, but breaks a rule serde can't check
     #[error("{}: {problem}", path.display())]
     Invalid {
-        /// the bean's file
+        /// path to the bean
         path: PathBuf,
         /// which rule, in words
         problem: String,
@@ -184,7 +184,7 @@ pub fn one(dir: &Path, slug: &str) -> Result<Found, OneError> {
 /// one bean, and the fields in it this senzu doesn't know
 #[derive(Debug)]
 pub struct Found {
-    /// the bean
+    /// the parsed bean
     pub bean: Bean,
     /// each a [`LoadError::UnknownField`]
     pub unknown: Vec<LoadError>,

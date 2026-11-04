@@ -9,7 +9,7 @@ pub(crate) const RAISED: Color = Color::Rgb(0x43, 0x4f, 0x55);
 pub(crate) const FG: Color = Color::Rgb(0xd3, 0xc6, 0xaa);
 pub(crate) const MUTED: Color = Color::Rgb(0x85, 0x92, 0x89);
 pub(crate) const FAINT: Color = Color::Rgb(0x5c, 0x6a, 0x72);
-/// the one accent: everforest orange, same as the zellij bar
+/// the one accent: everforest orange
 pub(crate) const ACCENT: Color = Color::Rgb(0xe6, 0x98, 0x75);
 pub(crate) const GREEN: Color = Color::Rgb(0xa7, 0xc0, 0x80);
 /// only for urgent, blocking and stale

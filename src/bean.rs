@@ -69,7 +69,7 @@ pub struct Bean {
 /// something known, with where it came from
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Fact {
-    /// the fact
+    /// one sentence
     pub text: String,
     /// who or what said so: "the crab", "checked", "the old script"
     pub source: String,
@@ -80,11 +80,11 @@ pub struct Fact {
 /// something settled
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Decision {
-    /// the decision
+    /// what was decided
     pub text: String,
-    /// who made it
+    /// who decided
     pub by: String,
-    /// when
+    /// when it was decided
     pub date: Date,
 }
 
@@ -102,7 +102,7 @@ pub struct Open {
 /// what happens next: a skill call for most beans, a dated chore for life ones
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Next {
-    /// the step
+    /// a skill call, or a chore
     pub text: String,
     /// the id of a draft that goes with it
     pub draft: Option<String>,
@@ -117,7 +117,7 @@ pub struct Draft {
     pub title: String,
     /// when it was written
     pub date: Date,
-    /// markdown
+    /// the draft itself, in markdown
     pub body: String,
 }
 
@@ -139,9 +139,9 @@ pub struct Repo {
 /// where the plan docs are
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Plan {
-    /// the prd
+    /// path to the prd
     pub prd: Option<PathBuf>,
-    /// the tech spec
+    /// path to the tech spec
     pub spec: Option<PathBuf>,
     /// a rendered review page
     pub page: Option<String>,
@@ -152,7 +152,7 @@ pub struct Plan {
 /// something that happened
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
-    /// when
+    /// the day it happened
     pub date: Date,
     /// the phase it happened in
     pub phase: Phase,
