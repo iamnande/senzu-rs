@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
@@ -59,12 +60,12 @@ pub(crate) struct Overrides {
     pub(crate) launch: Option<String>,
 }
 
-/// the bits of the environment resolution leans on, read once so tests can
-/// hand in their own
+/// the process environment senzu uses, read once so tests can hand in their own
 #[derive(Debug, Default)]
 pub(crate) struct Env {
     pub(crate) home: PathBuf,
     pub(crate) in_zellij: bool,
+    pub(crate) path: Option<OsString>,
     pub(crate) xdg_config_home: Option<PathBuf>,
     pub(crate) xdg_state_home: Option<PathBuf>,
 }
@@ -76,6 +77,7 @@ impl Env {
         Self {
             home: path("HOME").unwrap_or_default(),
             in_zellij: std::env::var_os("ZELLIJ").is_some(),
+            path: std::env::var_os("PATH"),
             xdg_config_home: path("XDG_CONFIG_HOME"),
             xdg_state_home: path("XDG_STATE_HOME"),
         }

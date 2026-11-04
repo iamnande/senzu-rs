@@ -1,10 +1,10 @@
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use serde::Serialize;
 
 use crate::bean::{Bean, Phase};
+use crate::config::Env;
 
 /// an agent senzu knows how to start. a new agent is a new entry in AGENTS
 pub(crate) struct Agent {
@@ -169,34 +169,15 @@ pub(crate) fn fallback_cwd(beans_dir: &Path) -> &Path {
     beans_dir.parent().unwrap_or(beans_dir)
 }
 
-/// everything `run` needs from the environment, checked before anything starts
-pub(crate) struct Host {
-    pub(crate) path: Option<OsString>,
-    pub(crate) in_zellij: bool,
-}
-
-impl Host {
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "the one place a launch reads env"
-    )]
-    pub(crate) fn from_process() -> Self {
-        Self {
-            path: std::env::var_os("PATH"),
-            in_zellij: std::env::var_os("ZELLIJ").is_some(),
-        }
-    }
-}
-
 /// everything that can be known wrong before starting anything: the agent and,
 /// for zellij, the multiplexer on PATH and us inside it
-pub(crate) fn preflight(launch: &Launch, agent: &Agent, host: &Host) -> Result<(), LaunchError> {
-    let on_path = |p: &str| find_on_path(p, host.path.as_deref()).is_some();
+pub(crate) fn preflight(launch: &Launch, agent: &Agent, env: &Env) -> Result<(), LaunchError> {
+    let on_path = |p: &str| find_on_path(p, env.path.as_deref()).is_some();
     if !on_path(agent.program) {
         return Err(LaunchError::NotOnPath(agent.program.to_owned()));
     }
     if launch.launcher == Launcher::Zellij {
-        if !host.in_zellij {
+        if !env.in_zellij {
             return Err(LaunchError::NotInZellij);
         }
         if !on_path("zellij") {
