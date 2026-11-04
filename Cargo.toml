@@ -29,3 +29,60 @@ tui-big-text = "0.8"
 assert_cmd = "2.2.2"
 predicates = "3.1.4"
 tempfile = "3.27.0"
+
+# ci runs clippy with -D warnings, so every warn here fails the build
+[lints.rust]
+missing_docs = "warn"
+unexpected_cfgs = "warn"
+unreachable_pub = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+
+# the edges: no panicking shortcuts, and output only where it's meant to be
+disallowed_macros = "deny"
+print_stderr = "warn"
+print_stdout = "warn"
+string_slice = "warn"
+unwrap_used = "deny"
+
+# picks from the nursery and restriction groups
+branches_sharing_code = "warn"
+clear_with_drain = "warn"
+collection_is_never_read = "warn"
+dbg_macro = "warn"
+debug_assert_with_mut_call = "warn"
+derive_partial_eq_without_eq = "warn"
+fallible_impl_from = "warn"
+iter_on_single_items = "warn"
+iter_with_drain = "warn"
+mem_forget = "warn"
+needless_collect = "warn"
+needless_pass_by_ref_mut = "warn"
+path_buf_push_overwrite = "warn"
+read_zero_byte_vec = "warn"
+redundant_clone = "warn"
+same_name_method = "warn"
+set_contains_or_insert = "warn"
+significant_drop_in_scrutinee = "warn"
+significant_drop_tightening = "warn"
+string_lit_as_bytes = "warn"
+suspicious_operation_groupings = "warn"
+trailing_empty_array = "warn"
+trait_duplication_in_bounds = "warn"
+tuple_array_conversions = "warn"
+type_repetition_in_bounds = "warn"
+undocumented_unsafe_blocks = "warn"
+unimplemented = "warn"
+unnecessary_struct_initialization = "warn"
+unused_peekable = "warn"
+unused_rounding = "warn"
+use_self = "warn"
+useless_let_if_seq = "warn"
+
+# pedantic, but more noise than signal here
+cast_precision_loss = "allow"
+similar_names = "allow"
+too_many_lines = "allow"
+wildcard_imports = "allow"

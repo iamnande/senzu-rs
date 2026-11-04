@@ -1,3 +1,9 @@
+//! senzu check: every rule a bean can break
+#![allow(
+    clippy::unwrap_used,
+    reason = "a test that can't unwrap should fail right there"
+)]
+
 mod common;
 
 use std::collections::BTreeMap;
@@ -47,9 +53,9 @@ fn missing_dir_exits_1() {
 }
 
 /// write a broken copy of a fixture, check names the file and the problem
-fn rejects(file: &str, bean: serde_json::Value, needle: &str) {
+fn rejects(file: &str, bean: &serde_json::Value, needle: &str) {
     let world = World::new();
-    world.write(file, &bean);
+    world.write(file, bean);
     world
         .senzu()
         .arg("check")
@@ -63,27 +69,27 @@ fn rejects(file: &str, bean: serde_json::Value, needle: &str) {
 fn rejects_an_unknown_field() {
     let mut bean = World::new().fixture("harden-the-hut");
     bean["vibes"] = json!("immaculate");
-    rejects("harden-the-hut.json", bean, "unknown field `vibes`");
+    rejects("harden-the-hut.json", &bean, "unknown field `vibes`");
 }
 
 #[test]
 fn rejects_a_slug_that_isnt_the_file_name() {
     let bean = World::new().fixture("harden-the-hut");
-    rejects("hut.json", bean, "doesn't match the file name");
+    rejects("hut.json", &bean, "doesn't match the file name");
 }
 
 #[test]
 fn rejects_a_slug_that_isnt_kebab() {
     let mut bean = World::new().fixture("harden-the-hut");
     bean["slug"] = json!("Hut_Two");
-    rejects("Hut_Two.json", bean, "isn't lowercase-kebab");
+    rejects("Hut_Two.json", &bean, "isn't lowercase-kebab");
 }
 
 #[test]
 fn rejects_a_relative_repo_path() {
     let mut bean = World::new().fixture("crab-shell");
     bean["repos"][0]["path"] = json!("worktrees/crab-shell");
-    rejects("crab-shell.json", bean, "isn't absolute");
+    rejects("crab-shell.json", &bean, "isn't absolute");
 }
 
 #[test]
@@ -91,28 +97,28 @@ fn rejects_a_duplicate_draft_id() {
     let mut bean = World::new().fixture("crab-shell");
     let draft = bean["drafts"][0].clone();
     bean["drafts"].as_array_mut().unwrap().push(draft);
-    rejects("crab-shell.json", bean, "used twice");
+    rejects("crab-shell.json", &bean, "used twice");
 }
 
 #[test]
 fn rejects_a_dangling_open_draft_ref() {
     let mut bean = World::new().fixture("crab-shell");
     bean["open"][0]["draft"] = json!("ghost-email");
-    rejects("crab-shell.json", bean, "\"ghost-email\" is referenced");
+    rejects("crab-shell.json", &bean, "\"ghost-email\" is referenced");
 }
 
 #[test]
 fn rejects_a_dangling_next_draft_ref() {
     let mut bean = World::new().fixture("harden-the-hut");
     bean["next"]["draft"] = json!("ghost-map");
-    rejects("harden-the-hut.json", bean, "\"ghost-map\" is referenced");
+    rejects("harden-the-hut.json", &bean, "\"ghost-map\" is referenced");
 }
 
 #[test]
 fn rejects_a_date_that_isnt_one() {
     let mut bean = World::new().fixture("crab-shell");
     bean["log"][0]["date"] = json!("2026-13-45");
-    rejects("crab-shell.json", bean, "crab-shell.json");
+    rejects("crab-shell.json", &bean, "crab-shell.json");
 }
 
 #[test]

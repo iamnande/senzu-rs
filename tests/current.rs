@@ -1,3 +1,13 @@
+//! bare senzu with no tty: the stream you're standing in
+#![allow(
+    clippy::unwrap_used,
+    reason = "a test that can't unwrap should fail right there"
+)]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "the test hands senzu its own PATH"
+)]
+
 mod common;
 
 use std::process::Command;

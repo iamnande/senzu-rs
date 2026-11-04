@@ -1,3 +1,9 @@
+//! senzu open: the argv, the cwd and the launchers
+#![allow(
+    clippy::unwrap_used,
+    reason = "a test that can't unwrap should fail right there"
+)]
+
 mod common;
 
 use std::path::{Path, PathBuf};

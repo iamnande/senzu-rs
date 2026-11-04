@@ -7,13 +7,13 @@ use serde::Serialize;
 use crate::bean::{Bean, Phase};
 
 /// an agent senzu knows how to start. a new agent is a new entry in AGENTS
-pub struct Agent {
-    pub name: &'static str,
-    pub program: &'static str,
+pub(crate) struct Agent {
+    pub(crate) name: &'static str,
+    pub(crate) program: &'static str,
     args: fn(&Bean) -> Vec<String>,
 }
 
-pub const AGENTS: &[Agent] = &[Agent {
+pub(crate) const AGENTS: &[Agent] = &[Agent {
     name: "claude",
     program: "claude",
     args: claude_args,
@@ -34,7 +34,7 @@ fn claude_args(b: &Bean) -> Vec<String> {
 /// where the agent opens
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Launcher {
+pub(crate) enum Launcher {
     /// replace this process
     Exec,
     /// a new zellij pane in the worktree, senzu keeps running
@@ -46,13 +46,13 @@ const LAUNCHERS: &[(&str, Launcher)] = &[("exec", Launcher::Exec), ("zellij", La
 /// a name that isn't a profile. a usage mistake, so exit 2
 #[derive(Debug, thiserror::Error)]
 #[error("unknown {kind} {name:?}, known: {known}")]
-pub struct UnknownProfile {
+pub(crate) struct UnknownProfile {
     kind: &'static str,
     name: String,
     known: String,
 }
 
-pub fn agent(name: &str) -> Result<&'static Agent, UnknownProfile> {
+pub(crate) fn agent(name: &str) -> Result<&'static Agent, UnknownProfile> {
     AGENTS
         .iter()
         .find(|a| a.name == name)
@@ -63,7 +63,7 @@ pub fn agent(name: &str) -> Result<&'static Agent, UnknownProfile> {
         })
 }
 
-pub fn launcher(name: &str) -> Result<Launcher, UnknownProfile> {
+pub(crate) fn launcher(name: &str) -> Result<Launcher, UnknownProfile> {
     LAUNCHERS
         .iter()
         .find(|(n, _)| *n == name)
@@ -81,16 +81,16 @@ pub fn launcher(name: &str) -> Result<Launcher, UnknownProfile> {
 
 /// a launch is data: what to run, where, under which session name
 #[derive(Debug, Serialize)]
-pub struct Launch {
-    pub launcher: Launcher,
+pub(crate) struct Launch {
+    pub(crate) launcher: Launcher,
     /// the full command, launcher wrapper included
-    pub argv: Vec<String>,
-    pub cwd: PathBuf,
-    pub session: String,
+    pub(crate) argv: Vec<String>,
+    pub(crate) cwd: PathBuf,
+    pub(crate) session: String,
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum LaunchError {
+pub(crate) enum LaunchError {
     #[error("{0} is done, nothing to open")]
     Done(String),
     #[error("{0} not found on PATH")]
@@ -111,14 +111,14 @@ pub enum LaunchError {
 
 /// the agent and launcher a launch uses, resolved from flag, env, config or default
 #[derive(Clone, Copy)]
-pub struct Profile {
-    pub agent: &'static Agent,
-    pub launcher: Launcher,
+pub(crate) struct Profile {
+    pub(crate) agent: &'static Agent,
+    pub(crate) launcher: Launcher,
 }
 
 impl Profile {
     /// unknown names are usage mistakes, caught before anything runs
-    pub fn resolve(agent_name: &str, launcher_name: &str) -> Result<Self, UnknownProfile> {
+    pub(crate) fn resolve(agent_name: &str, launcher_name: &str) -> Result<Self, UnknownProfile> {
         Ok(Self {
             agent: agent(agent_name)?,
             launcher: launcher(launcher_name)?,
@@ -127,7 +127,7 @@ impl Profile {
 }
 
 /// cwd is the bean's first worktree that exists, else the beans dir's parent
-pub fn plan(bean: &Bean, profile: Profile, beans_dir: &Path) -> Result<Launch, LaunchError> {
+pub(crate) fn plan(bean: &Bean, profile: Profile, beans_dir: &Path) -> Result<Launch, LaunchError> {
     let Profile { agent, launcher } = profile;
     if bean.phase == Phase::Done {
         return Err(LaunchError::Done(bean.slug.clone()));
@@ -160,18 +160,22 @@ pub fn plan(bean: &Bean, profile: Profile, beans_dir: &Path) -> Result<Launch, L
 
 /// where a bean with no worktree opens: the beans dir's parent, usually the
 /// repo the beans live in
-pub fn fallback_cwd(beans_dir: &Path) -> &Path {
+pub(crate) fn fallback_cwd(beans_dir: &Path) -> &Path {
     beans_dir.parent().unwrap_or(beans_dir)
 }
 
 /// everything `run` needs from the environment, checked before anything starts
-pub struct Host {
-    pub path: Option<OsString>,
-    pub in_zellij: bool,
+pub(crate) struct Host {
+    pub(crate) path: Option<OsString>,
+    pub(crate) in_zellij: bool,
 }
 
 impl Host {
-    pub fn from_process() -> Self {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the one place a launch reads env"
+    )]
+    pub(crate) fn from_process() -> Self {
         Self {
             path: std::env::var_os("PATH"),
             in_zellij: std::env::var_os("ZELLIJ").is_some(),
@@ -181,7 +185,7 @@ impl Host {
 
 /// everything that can be known wrong before starting anything: the agent and,
 /// for zellij, the multiplexer on PATH and us inside it
-pub fn preflight(launch: &Launch, agent: &Agent, host: &Host) -> Result<(), LaunchError> {
+pub(crate) fn preflight(launch: &Launch, agent: &Agent, host: &Host) -> Result<(), LaunchError> {
     let on_path = |p: &str| find_on_path(p, host.path.as_deref()).is_some();
     if !on_path(agent.program) {
         return Err(LaunchError::NotOnPath(agent.program.to_owned()));
@@ -201,7 +205,7 @@ pub fn preflight(launch: &Launch, agent: &Agent, host: &Host) -> Result<(), Laun
 /// zellij gets no stdin or stdout, since it would print its pane id over the
 /// tui, and its stderr comes back in the error. call `preflight` first
 #[tracing::instrument(name = "launch", skip_all, fields(session = %launch.session, launcher = ?launch.launcher))]
-pub fn run(launch: &Launch) -> Result<(), LaunchError> {
+pub(crate) fn run(launch: &Launch) -> Result<(), LaunchError> {
     let (program, args) = launch.argv.split_first().expect("argv has a program");
     let mut cmd = Command::new(program);
     cmd.args(args).current_dir(&launch.cwd);

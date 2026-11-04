@@ -4,7 +4,7 @@ use std::process::Command;
 use crate::bean::Bean;
 
 /// the beans this dir belongs to: by worktree path first, then by branch name
-pub fn matches<'a>(beans: &'a [Bean], cwd: &Path) -> Vec<&'a Bean> {
+pub(crate) fn matches<'a>(beans: &'a [Bean], cwd: &Path) -> Vec<&'a Bean> {
     let cwd = cwd.canonicalize().unwrap_or_else(|_| cwd.to_owned());
     let by_path: Vec<&Bean> = beans
         .iter()

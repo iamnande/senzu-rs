@@ -8,14 +8,14 @@ const DEFAULT_AGENT: &str = "claude";
 /// ~/.config/senzu/config.toml, every key optional
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Config {
-    pub beans: Option<PathBuf>,
-    pub agent: Option<String>,
-    pub launch: Option<String>,
+pub(crate) struct Config {
+    pub(crate) beans: Option<PathBuf>,
+    pub(crate) agent: Option<String>,
+    pub(crate) launch: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum ConfigError {
+pub(crate) enum ConfigError {
     #[error("{path}: {source}")]
     Read {
         path: PathBuf,
@@ -33,7 +33,7 @@ pub enum ConfigError {
 
 impl Config {
     /// a missing file is an empty config, anything else unreadable is an error
-    pub fn load(path: &Path) -> Result<Self, ConfigError> {
+    pub(crate) fn load(path: &Path) -> Result<Self, ConfigError> {
         let raw = match std::fs::read_to_string(path) {
             Ok(raw) => raw,
             Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Self::default()),
@@ -53,61 +53,66 @@ impl Config {
 
 /// what the flags and env already settled, before config and defaults
 #[derive(Debug, Default)]
-pub struct Overrides {
-    pub beans: Option<PathBuf>,
-    pub agent: Option<String>,
-    pub launch: Option<String>,
+pub(crate) struct Overrides {
+    pub(crate) beans: Option<PathBuf>,
+    pub(crate) agent: Option<String>,
+    pub(crate) launch: Option<String>,
 }
 
-/// the bits of the environment resolution leans on
-#[derive(Debug)]
-pub struct Env {
-    pub home: PathBuf,
-    pub in_zellij: bool,
+/// the bits of the environment resolution leans on, read once so tests can
+/// hand in their own
+#[derive(Debug, Default)]
+pub(crate) struct Env {
+    pub(crate) home: PathBuf,
+    pub(crate) in_zellij: bool,
+    pub(crate) xdg_config_home: Option<PathBuf>,
+    pub(crate) xdg_state_home: Option<PathBuf>,
 }
 
 impl Env {
-    pub fn from_process() -> Self {
+    #[expect(clippy::disallowed_methods, reason = "the one place env is read")]
+    pub(crate) fn from_process() -> Self {
+        let path = |var| std::env::var_os(var).map(PathBuf::from);
         Self {
-            home: std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_default(),
+            home: path("HOME").unwrap_or_default(),
             in_zellij: std::env::var_os("ZELLIJ").is_some(),
+            xdg_config_home: path("XDG_CONFIG_HOME"),
+            xdg_state_home: path("XDG_STATE_HOME"),
         }
     }
 
-    /// $XDG_CONFIG_HOME/senzu/config.toml, else ~/.config/senzu/config.toml
-    pub fn config_path(&self) -> PathBuf {
-        xdg_dir("XDG_CONFIG_HOME", &self.home, ".config")
+    /// `$XDG_CONFIG_HOME/senzu/config.toml`, else `~/.config/senzu/config.toml`
+    pub(crate) fn config_path(&self) -> PathBuf {
+        xdg_dir(self.xdg_config_home.as_deref(), &self.home, ".config")
             .join("senzu")
             .join("config.toml")
     }
 
-    /// $XDG_STATE_HOME/senzu, else ~/.local/state/senzu
-    pub fn state_dir(&self) -> PathBuf {
-        xdg_dir("XDG_STATE_HOME", &self.home, ".local/state").join("senzu")
+    /// `$XDG_STATE_HOME/senzu`, else `~/.local/state/senzu`
+    pub(crate) fn state_dir(&self) -> PathBuf {
+        xdg_dir(self.xdg_state_home.as_deref(), &self.home, ".local/state").join("senzu")
     }
 }
 
-fn xdg_dir(var: &str, home: &Path, fallback: &str) -> PathBuf {
-    std::env::var_os(var)
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| home.join(fallback))
+/// a relative xdg path resolves against cwd, so the same command would read a
+/// different config depending on where it runs. ignore it and use home
+fn xdg_dir(var: Option<&Path>, home: &Path, fallback: &str) -> PathBuf {
+    var.filter(|p| p.is_absolute())
+        .map_or_else(|| home.join(fallback), Path::to_owned)
 }
 
 /// the settings every command runs with
 #[derive(Debug, PartialEq, Eq)]
-pub struct Settings {
-    pub beans: PathBuf,
-    pub agent: String,
-    pub launch: String,
+pub(crate) struct Settings {
+    pub(crate) beans: PathBuf,
+    pub(crate) agent: String,
+    pub(crate) launch: String,
 }
 
 /// flag > env (clap already merged those) > config > default.
 /// the beans dir has no default. the launch default detects: zellij when
 /// we're inside one, else exec.
-pub fn resolve(over: Overrides, config: Config, env: &Env) -> Result<Settings, ConfigError> {
+pub(crate) fn resolve(over: Overrides, config: Config, env: &Env) -> Result<Settings, ConfigError> {
     let beans = over
         .beans
         .or(config.beans)
@@ -145,6 +150,7 @@ mod tests {
         Env {
             home: PathBuf::from("/home/crab"),
             in_zellij,
+            ..Env::default()
         }
     }
 

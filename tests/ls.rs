@@ -1,3 +1,9 @@
+//! senzu ls: what shows, in what order, in what shape
+#![allow(
+    clippy::unwrap_used,
+    reason = "a test that can't unwrap should fail right there"
+)]
+
 mod common;
 
 use std::collections::BTreeSet;

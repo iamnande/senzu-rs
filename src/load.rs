@@ -1,3 +1,4 @@
+//! reading beans off disk. the cli never writes them
 use std::path::{Path, PathBuf};
 
 use crate::bean::{self, Bean};
@@ -5,28 +6,44 @@ use crate::bean::{self, Bean};
 /// one bean that didn't make it. the rest of the dir still loads
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
+    /// the file couldn't be read
     #[error("{}: {source}", path.display())]
     Read {
+        /// the bean's file
         path: PathBuf,
+        /// what the os said
         source: std::io::Error,
     },
+    /// the json doesn't match the schema
     #[error("{}: {source}", path.display())]
     Parse {
+        /// the bean's file
         path: PathBuf,
+        /// what serde said, with line and column
         source: serde_json::Error,
     },
+    /// it parsed, but breaks a rule serde can't check
     #[error("{}: {problem}", path.display())]
-    Invalid { path: PathBuf, problem: String },
+    Invalid {
+        /// the bean's file
+        path: PathBuf,
+        /// which rule, in words
+        problem: String,
+    },
 }
 
 /// the whole dir is unusable
 #[derive(Debug, thiserror::Error)]
 pub enum DirError {
+    /// it isn't there, or isn't a dir
     #[error("beans dir not found: {}", .0.display())]
     NotFound(PathBuf),
+    /// it's there but couldn't be listed
     #[error("{}: {source}", path.display())]
     Read {
+        /// the beans dir
         path: PathBuf,
+        /// what the os said
         source: std::io::Error,
     },
 }
@@ -37,6 +54,7 @@ pub enum OneError {
     /// no `<slug>.json`, or a slug that could never name one. exit 3
     #[error("no bean named {0:?}")]
     Unknown(String),
+    /// the whole dir is unusable
     #[error(transparent)]
     Dir(#[from] DirError),
     /// the file is there but bad: every problem, one per line
@@ -52,16 +70,22 @@ fn lines(errors: &[LoadError]) -> String {
         .join("\n")
 }
 
+/// what a dir held
 #[derive(Debug, Default)]
 pub struct Harvest {
     /// sorted by file name, so output is stable
     pub beans: Vec<Bean>,
+    /// the beans that didn't make it, and why
     pub errors: Vec<LoadError>,
     /// old `.md` beans sitting in the dir, skipped
     pub markdown: usize,
 }
 
 /// read every `*.json` in the dir. a bad bean lands in `errors`, never fails the lot
+///
+/// # Errors
+///
+/// a [`DirError`] when the dir is missing or can't be listed.
 #[tracing::instrument(name = "load", skip_all, fields(dir = %dir.display()))]
 pub fn load(dir: &Path) -> Result<Harvest, DirError> {
     if !dir.is_dir() {
@@ -99,6 +123,11 @@ pub fn load(dir: &Path) -> Result<Harvest, DirError> {
 /// read just `<slug>.json`: the file name is the key, so the rest of the dir
 /// never gets opened. the slug is checked first, which also keeps it from
 /// walking out of the dir (`../x` isn't kebab-case)
+///
+/// # Errors
+///
+/// [`OneError::Unknown`] when there's no such bean, [`OneError::Bad`] when
+/// it's there but broken, and [`OneError::Dir`] when the dir itself is.
 #[tracing::instrument(name = "load", skip_all, fields(dir = %dir.display(), slug))]
 pub fn one(dir: &Path, slug: &str) -> Result<Bean, OneError> {
     if !dir.is_dir() {

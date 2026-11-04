@@ -1,14 +1,22 @@
 //! senzu: browse beans, launch an agent into one.
 //!
-//! `main.rs` is the cli on top. everything else lives here, so a second
-//! front end (a web ui) can share the bean types and the loader.
+//! the bean types and the loader are public, so another front end (a web ui)
+//! can share them. the rest is the cli, reached through [`run`].
 
 pub mod bean;
-pub mod cli;
-pub mod config;
-pub mod current;
-pub mod launch;
 pub mod load;
-pub mod output;
-pub mod telemetry;
-pub mod tui;
+
+mod cli;
+mod cmd;
+mod config;
+mod current;
+mod launch;
+mod output;
+mod telemetry;
+mod tui;
+
+/// run the cli with the process's args and env, and say how it went
+#[must_use]
+pub fn run() -> std::process::ExitCode {
+    cmd::main()
+}

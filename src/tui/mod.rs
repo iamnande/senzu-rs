@@ -27,7 +27,7 @@ struct Ctx<'a> {
 }
 
 /// the tui is home base: it stays open, and enter sends the agent somewhere else
-pub fn run(beans_dir: &Path, home: &Path, profile: Profile) -> anyhow::Result<()> {
+pub(crate) fn run(beans_dir: &Path, home: &Path, profile: Profile) -> anyhow::Result<()> {
     let mut board = Board::new(Vec::new());
     reload(&mut board, beans_dir)?;
     // init sets raw mode and the alternate screen, and hooks panics to undo both
@@ -127,13 +127,13 @@ fn reload(board: &mut Board, beans_dir: &Path) -> anyhow::Result<()> {
 mod title {
     use std::io::Write as _;
 
-    pub fn push() {
+    pub(crate) fn push() {
         let mut out = std::io::stdout();
         let _ = write!(out, "\x1b[22;0t");
         let _ = crossterm::execute!(out, crossterm::terminal::SetTitle("🫘 senzu"));
     }
 
-    pub fn pop() {
+    pub(crate) fn pop() {
         let mut out = std::io::stdout();
         let _ = write!(out, "\x1b[23;0t");
         let _ = out.flush();

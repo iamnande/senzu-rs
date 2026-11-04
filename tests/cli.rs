@@ -1,3 +1,9 @@
+//! flags, config and the log file, end to end
+#![allow(
+    clippy::unwrap_used,
+    reason = "a test that can't unwrap should fail right there"
+)]
+
 mod common;
 
 use std::path::Path;
@@ -65,7 +71,7 @@ fn the_log_file_is_named_for_the_day() {
     // senzu.YYYY-MM-DD.log
     assert!(
         name.starts_with("senzu.")
-            && name.ends_with(".log")
+            && Path::new(name).extension().is_some_and(|e| e == "log")
             && name.len() == "senzu.2026-11-03.log".len(),
         "{name}"
     );

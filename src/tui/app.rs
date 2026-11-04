@@ -5,14 +5,14 @@ use crate::output::{self, Filter};
 
 /// what the event loop should do after a key. everything else is state
 #[derive(Debug, PartialEq, Eq)]
-pub enum Action {
+pub(crate) enum Action {
     Quit,
     Launch(String),
     Reload,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Mode {
+pub(crate) enum Mode {
     List,
     /// typing a filter
     Filter,
@@ -23,23 +23,23 @@ pub enum Mode {
 }
 
 /// the whole tui state. `update` changes it and never touches a terminal
-pub struct Board {
-    pub beans: Vec<Bean>,
+pub(crate) struct Board {
+    pub(crate) beans: Vec<Bean>,
     /// indexes into `beans`, sorted and filtered, in display order
-    pub visible: Vec<usize>,
+    pub(crate) visible: Vec<usize>,
     /// index into `visible`
-    pub selected: usize,
+    pub(crate) selected: usize,
     /// every priority and done beans too, like `ls --all --phase` for each
-    pub all: bool,
-    pub filter: String,
-    pub mode: Mode,
-    pub status: Option<String>,
+    pub(crate) all: bool,
+    pub(crate) filter: String,
+    pub(crate) mode: Mode,
+    pub(crate) status: Option<String>,
     /// old `.md` beans in the dir, skipped. the empty screen says so
-    pub markdown: usize,
+    pub(crate) markdown: usize,
 }
 
 impl Board {
-    pub fn new(beans: Vec<Bean>) -> Self {
+    pub(crate) fn new(beans: Vec<Bean>) -> Self {
         let mut board = Self {
             beans,
             visible: Vec::new(),
@@ -54,12 +54,12 @@ impl Board {
         board
     }
 
-    pub fn selected_bean(&self) -> Option<&Bean> {
+    pub(crate) fn selected_bean(&self) -> Option<&Bean> {
         self.visible.get(self.selected).map(|&i| &self.beans[i])
     }
 
     /// new beans from a reload, keeping the selection on the same slug
-    pub fn replace_beans(&mut self, beans: Vec<Bean>) {
+    pub(crate) fn replace_beans(&mut self, beans: Vec<Bean>) {
         let keep = self.selected_bean().map(|b| b.slug.clone());
         self.beans = beans;
         self.refresh(keep.as_deref());
@@ -67,7 +67,7 @@ impl Board {
 
     /// the draft ids the selected bean links to: next's first, then open items
     /// in order, each once even when two things link the same draft
-    pub fn drafts_for_selected(&self) -> Vec<&str> {
+    pub(crate) fn drafts_for_selected(&self) -> Vec<&str> {
         let Some(bean) = self.selected_bean() else {
             return Vec::new();
         };
@@ -86,7 +86,7 @@ impl Board {
         ids
     }
 
-    pub fn update(&mut self, key: KeyEvent) -> Option<Action> {
+    pub(crate) fn update(&mut self, key: KeyEvent) -> Option<Action> {
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             return Some(Action::Quit);
         }

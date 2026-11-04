@@ -1,3 +1,9 @@
+//! senzu show: one bean, read on its own
+#![allow(
+    clippy::unwrap_used,
+    reason = "a test that can't unwrap should fail right there"
+)]
+
 mod common;
 
 use predicates::prelude::*;

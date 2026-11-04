@@ -30,14 +30,14 @@ const STEPS: [Phase; 6] = [
 
 /// what the screen needs beyond the board state
 #[derive(Clone, Copy)]
-pub struct View<'a> {
-    pub home: &'a Path,
-    pub today: Date,
+pub(crate) struct View<'a> {
+    pub(crate) home: &'a Path,
+    pub(crate) today: Date,
     /// the agent profile's name, for the enter hint
-    pub agent: &'a str,
-    pub launcher: Launcher,
+    pub(crate) agent: &'a str,
+    pub(crate) launcher: Launcher,
     /// where a bean with no worktree opens
-    pub fallback: &'a Path,
+    pub(crate) fallback: &'a Path,
 }
 
 /// the board and the view together, so a panel takes one argument for both
@@ -61,7 +61,7 @@ struct Popup<'a> {
 }
 
 /// a filled panel: no border lines, a bold label, padding inside
-fn panel<'a>(title: String) -> Block<'a> {
+fn panel<'a>(title: &str) -> Block<'a> {
     Block::new()
         .style(Style::new().bg(PANEL).fg(FG))
         .title(Span::styled(format!("  {title}"), fg(FG).bold()))
@@ -69,7 +69,7 @@ fn panel<'a>(title: String) -> Block<'a> {
 }
 
 /// sidebar on the left, the selected stream on the right, a bar along the bottom
-pub fn render(frame: &mut Frame, board: &Board, view: View) {
+pub(crate) fn render(frame: &mut Frame, board: &Board, view: View) {
     frame.render_widget(Block::new().style(Style::new().bg(BG).fg(FG)), frame.area());
     let [main, bar] =
         Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
@@ -85,7 +85,7 @@ pub fn render(frame: &mut Frame, board: &Board, view: View) {
     match board.selected_bean() {
         Some(bean) => detail(frame, Stream { bean, view }, right),
         None => frame.render_widget(
-            Paragraph::new(Line::styled(empty_note(board), fg(MUTED))).block(panel(String::new())),
+            Paragraph::new(Line::styled(empty_note(board), fg(MUTED))).block(panel("")),
             right,
         ),
     }
@@ -276,7 +276,7 @@ fn detail(frame: &mut Frame, stream: Stream, area: Rect) {
 
 /// where the stream is: priority, the phase in pixels, the phases as dots
 fn now_panel(frame: &mut Frame, bean: &Bean, area: Rect) {
-    let block = panel(bean.slug.clone());
+    let block = panel(&bean.slug);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let [title, priority, _, hero, _, steps] = Layout::vertical([
@@ -380,7 +380,7 @@ fn next_panel(frame: &mut Frame, stream: Stream, area: Rect) {
     frame.render_widget(
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })
-            .block(panel("next".into())),
+            .block(panel("next")),
         area,
     );
 }
@@ -406,7 +406,7 @@ fn open_panel(frame: &mut Frame, bean: &Bean, area: Rect) {
             .collect()
     };
     frame.render_widget(
-        Paragraph::new(lines).block(panel(format!("open  {}", bean.open.len()))),
+        Paragraph::new(lines).block(panel(&format!("open  {}", bean.open.len()))),
         area,
     );
 }
@@ -432,7 +432,7 @@ fn log_panel(frame: &mut Frame, bean: &Bean, area: Rect) {
         })
         .collect();
     frame.render_widget(
-        Paragraph::new(lines).block(panel(format!("log  {}", bean.log.len()))),
+        Paragraph::new(lines).block(panel(&format!("log  {}", bean.log.len()))),
         area,
     );
 }
@@ -468,21 +468,20 @@ fn status_bar(frame: &mut Frame, screen: Screen, area: Rect) {
     let [l, r] = Layout::horizontal([Constraint::Min(1), Constraint::Length(width)]).areas(area);
 
     // a status message takes the left side, otherwise the launcher does
-    let left = match &board.status {
-        Some(msg) => Line::from(vec![
+    let left = if let Some(msg) = &board.status {
+        Line::from(vec![
             Span::styled(" ● ", fg(ACCENT)),
             Span::styled(msg.clone(), fg(FG)),
-        ]),
-        None => {
-            let name = match view.launcher {
-                Launcher::Exec => "EXEC",
-                Launcher::Zellij => "ZELLIJ",
-            };
-            Line::from(vec![
-                Span::styled(" ● ", fg(GREEN)),
-                Span::styled(name, fg(FG).bold()),
-            ])
-        }
+        ])
+    } else {
+        let name = match view.launcher {
+            Launcher::Exec => "EXEC",
+            Launcher::Zellij => "ZELLIJ",
+        };
+        Line::from(vec![
+            Span::styled(" ● ", fg(GREEN)),
+            Span::styled(name, fg(FG).bold()),
+        ])
     };
     frame.render_widget(Paragraph::new(left), l);
     frame.render_widget(Paragraph::new(Line::from(right)), r);
@@ -639,7 +638,11 @@ mod tests {
     fn text(buf: &Buffer) -> String {
         buf.content()
             .chunks(usize::from(buf.area.width))
-            .map(|row| row.iter().map(|c| c.symbol()).collect::<String>())
+            .map(|row| {
+                row.iter()
+                    .map(ratatui::buffer::Cell::symbol)
+                    .collect::<String>()
+            })
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -655,6 +658,7 @@ mod tests {
         for (y, row) in t.lines().enumerate() {
             let row: String = row.chars().take(usize::from(max_x)).collect();
             if let Some(x) = row.find(needle) {
+                #[expect(clippy::string_slice, reason = "find lands on a char boundary")]
                 let x = row[..x].chars().count();
                 return (u16::try_from(x).unwrap(), u16::try_from(y).unwrap());
             }

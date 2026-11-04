@@ -1,4 +1,24 @@
-disallowed-names = []
 cognitive-complexity-threshold = 100
+disallowed-names = []
 too-many-arguments-threshold = 3
 type-complexity-threshold = 375
+
+allow-expect-in-tests = true
+allow-print-in-tests = true
+allow-unwrap-in-tests = true
+
+disallowed-macros = [
+  { path = "log::trace", reason = "use tracing", replacement = "tracing::trace" },
+  { path = "log::debug", reason = "use tracing", replacement = "tracing::debug" },
+  { path = "log::info", reason = "use tracing", replacement = "tracing::info" },
+  { path = "log::warn", reason = "use tracing", replacement = "tracing::warn" },
+  { path = "log::error", reason = "use tracing", replacement = "tracing::error" },
+]
+
+# the environment comes in through config::Env and launch::Host, so tests can hand one in
+disallowed-methods = [
+  { path = "std::env::var", reason = "read it in config::Env or launch::Host" },
+  { path = "std::env::var_os", reason = "read it in config::Env or launch::Host" },
+  { path = "std::env::set_var", reason = "unsound; pass the value in instead" },
+  { path = "std::env::remove_var", reason = "unsound; pass the value in instead" },
+]

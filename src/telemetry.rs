@@ -12,13 +12,13 @@ use tracing_subscriber::util::SubscriberInitExt;
 const KEEP_DAYS: usize = 7;
 
 /// hold this until exit: dropping it flushes the file
-pub struct Guard {
+pub(crate) struct Guard {
     _file: Option<WorkerGuard>,
 }
 
 /// logs go to a file and nowhere else, so stdout stays output. a dir we
 /// can't make means no file layer, and the cli carries on without a diary.
-pub fn init(state_dir: &Path) -> Guard {
+pub(crate) fn init(state_dir: &Path) -> Guard {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     let appender = std::fs::create_dir_all(state_dir).ok().and_then(|()| {

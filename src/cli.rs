@@ -7,25 +7,25 @@ use crate::bean::{Phase, Priority};
 /// senzu: browse beans, launch an agent into one
 #[derive(Debug, Parser)]
 #[command(name = "senzu", version, about)]
-pub struct Cli {
+pub(crate) struct Cli {
     /// the beans dir
     #[arg(long, global = true, env = "SENZU_BEANS")]
-    pub beans: Option<PathBuf>,
+    pub(crate) beans: Option<PathBuf>,
 
     /// the agent profile to launch
     #[arg(long, global = true, env = "SENZU_AGENT")]
-    pub agent: Option<String>,
+    pub(crate) agent: Option<String>,
 
     /// how the agent opens: exec or zellij
     #[arg(long, global = true, env = "SENZU_LAUNCH")]
-    pub launch: Option<String>,
+    pub(crate) launch: Option<String>,
 
     #[command(subcommand)]
-    pub cmd: Option<Cmd>,
+    pub(crate) cmd: Option<Cmd>,
 }
 
 #[derive(Debug, Subcommand)]
-pub enum Cmd {
+pub(crate) enum Cmd {
     /// one line per open stream, urgent and high first
     Ls {
         /// every priority, not just urgent and high

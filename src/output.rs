@@ -7,16 +7,16 @@ use crate::bean::{Bean, Phase, Priority};
 
 /// what `ls` keeps: the filters the flags asked for
 #[derive(Debug, Default)]
-pub struct Filter {
-    pub all: bool,
-    pub phase: Option<Phase>,
-    pub priority: Option<Priority>,
+pub(crate) struct Filter {
+    pub(crate) all: bool,
+    pub(crate) phase: Option<Phase>,
+    pub(crate) priority: Option<Priority>,
 }
 
 impl Filter {
     /// done beans stay out unless `--phase done` asks for them. urgent and high
     /// by default; `--all` or an explicit `--priority` replaces that.
-    pub fn keeps(&self, bean: &Bean) -> bool {
+    pub(crate) fn keeps(&self, bean: &Bean) -> bool {
         let phase_ok = match self.phase {
             Some(phase) => bean.phase == phase,
             None => bean.phase != Phase::Done,
@@ -30,26 +30,26 @@ impl Filter {
 }
 
 /// filtered, then sorted by (priority, slug)
-pub fn select<'a>(beans: &'a [Bean], filter: &Filter) -> Vec<&'a Bean> {
+pub(crate) fn select<'a>(beans: &'a [Bean], filter: &Filter) -> Vec<&'a Bean> {
     let mut out: Vec<&Bean> = beans.iter().filter(|b| filter.keeps(b)).collect();
     out.sort_by(|a, b| order(a, b));
     out
 }
 
 /// priority first, then slug
-pub fn order(a: &Bean, b: &Bean) -> std::cmp::Ordering {
+pub(crate) fn order(a: &Bean, b: &Bean) -> std::cmp::Ordering {
     (a.priority, &a.slug).cmp(&(b.priority, &b.slug))
 }
 
 /// one `ls` row as json
 #[derive(Debug, Serialize)]
-pub struct Row<'a> {
-    pub slug: &'a str,
-    pub title: &'a str,
-    pub phase: Phase,
-    pub priority: Priority,
-    pub next: &'a str,
-    pub worktree: Option<&'a Path>,
+pub(crate) struct Row<'a> {
+    pub(crate) slug: &'a str,
+    pub(crate) title: &'a str,
+    pub(crate) phase: Phase,
+    pub(crate) priority: Priority,
+    pub(crate) next: &'a str,
+    pub(crate) worktree: Option<&'a Path>,
 }
 
 impl<'a> From<&'a Bean> for Row<'a> {
@@ -66,7 +66,7 @@ impl<'a> From<&'a Bean> for Row<'a> {
 }
 
 /// `slug  priority  phase  next`, columns padded, each line cut to `width`
-pub fn ls_table(beans: &[&Bean], width: usize) -> String {
+pub(crate) fn ls_table(beans: &[&Bean], width: usize) -> String {
     let slug_w = beans
         .iter()
         .map(|b| b.slug.chars().count())
@@ -88,7 +88,7 @@ pub fn ls_table(beans: &[&Bean], width: usize) -> String {
 }
 
 /// the 3-line view, for the current stream
-pub fn brief(bean: &Bean, home: &Path) -> String {
+pub(crate) fn brief(bean: &Bean, home: &Path) -> String {
     format!(
         "{} · {} · {}\nnext: {}\nworktree: {}\n",
         bean.slug,
@@ -100,7 +100,7 @@ pub fn brief(bean: &Bean, home: &Path) -> String {
 }
 
 /// header fields, open items, the last log line
-pub fn show(bean: &Bean, home: &Path) -> String {
+pub(crate) fn show(bean: &Bean, home: &Path) -> String {
     let mut out = brief(bean, home);
     let _ = writeln!(out, "title: {}", bean.title);
     if let Some(note) = &bean.priority_note {
@@ -147,7 +147,7 @@ fn worktree_label(bean: &Bean, home: &Path) -> String {
 }
 
 /// `/home/crab/x` → `~/x`
-pub fn tildify(path: &Path, home: &Path) -> String {
+pub(crate) fn tildify(path: &Path, home: &Path) -> String {
     match path.strip_prefix(home) {
         Ok(rest) if !home.as_os_str().is_empty() => format!("~/{}", rest.display()),
         _ => path.display().to_string(),
