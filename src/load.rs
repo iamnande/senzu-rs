@@ -134,10 +134,18 @@ pub fn load(dir: &Path) -> Result<Harvest, DirError> {
         match path.extension().and_then(|e| e.to_str()) {
             Some("json") => match parse(&path) {
                 Ok(found) => {
+                    for e in &found.unknown {
+                        tracing::info!(file = %path.display(), outcome = "ignored", reason = %e, "unknown field");
+                    }
                     harvest.beans.push(found.bean);
                     harvest.unknown.extend(found.unknown);
                 }
-                Err(errs) => harvest.errors.extend(errs),
+                Err(errs) => {
+                    for e in &errs {
+                        tracing::info!(file = %path.display(), outcome = "skipped", reason = %e, "bad bean");
+                    }
+                    harvest.errors.extend(errs);
+                }
             },
             Some("md") => harvest.markdown += 1,
             _ => {}
@@ -146,6 +154,8 @@ pub fn load(dir: &Path) -> Result<Harvest, DirError> {
     tracing::info!(
         beans = harvest.beans.len(),
         errors = harvest.errors.len(),
+        unknown = harvest.unknown.len(),
+        markdown = harvest.markdown,
         "loaded"
     );
     Ok(harvest)

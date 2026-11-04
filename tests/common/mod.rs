@@ -78,6 +78,31 @@ pub(crate) fn read_logs(home: &Path) -> String {
         .collect()
 }
 
+/// every log line under a home's state dir, parsed
+pub(crate) fn log_lines(home: &Path) -> Vec<serde_json::Value> {
+    read_logs(home)
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect()
+}
+
+/// the line where the run's root span closes
+pub(crate) fn root_close(home: &Path) -> serde_json::Value {
+    log_lines(home)
+        .into_iter()
+        .find(|l| l["fields"]["message"] == "close" && l["span"]["name"] == "senzu")
+        .unwrap()
+}
+
+/// the names of the spans that closed during a run
+pub(crate) fn closed_spans(home: &Path) -> Vec<String> {
+    log_lines(home)
+        .into_iter()
+        .filter(|l| l["fields"]["message"] == "close")
+        .map(|l| l["span"]["name"].as_str().unwrap().to_owned())
+        .collect()
+}
+
 /// the names of the log files under a home's state dir
 pub(crate) fn log_files(home: &Path) -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(home.join(".local/state/senzu"))

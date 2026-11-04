@@ -197,6 +197,21 @@ fn exec_replaces_senzu_with_the_agent() {
         ));
 }
 
+/// exec skips every destructor, so only a synchronous log keeps these lines
+#[test]
+fn exec_keeps_the_log_lines_before_it() {
+    let world = World::new();
+    let bin = fake_bin(&world, &["claude"]);
+    world
+        .senzu()
+        .env("PATH", &bin)
+        .args(["open", "crab-shell"])
+        .assert()
+        .success();
+    let log = world.log();
+    assert!(log.contains("launch planned"), "{log}");
+}
+
 #[test]
 fn zellij_runs_the_agent_in_a_pane_and_waits() {
     let world = World::new();
