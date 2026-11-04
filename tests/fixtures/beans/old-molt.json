@@ -4,12 +4,8 @@
   "title": "shed the old shell",
   "phase": "done",
   "priority": "low",
-  "issue": null,
-  "thread": null,
-  "plan": null,
   "next": {
-    "text": "nothing, it's molted",
-    "draft": null
+    "text": "nothing, it's molted"
   },
   "log": [
     {
