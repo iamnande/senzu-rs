@@ -2,6 +2,7 @@ mod bean;
 mod cli;
 mod config;
 mod current;
+mod launch;
 mod load;
 mod output;
 mod telemetry;
@@ -86,7 +87,23 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             }
             Ok(ExitCode::SUCCESS)
         }
-        Some(Cmd::Open { .. }) => anyhow::bail!("open: not built yet"),
+        Some(Cmd::Open { slug, dry_run }) => {
+            let profile = launch::Profile::resolve(&settings.agent, &settings.launch)?;
+            let harvest = load_and_warn(&settings.beans)?;
+            let bean = find(&harvest.beans, &slug)?;
+            let planned = launch::plan(bean, profile, &settings.beans)?;
+            tracing::info!(argv = ?planned.argv, cwd = %planned.cwd.display(), "launch planned");
+            if dry_run {
+                println!("{}", serde_json::to_string_pretty(&planned)?);
+                return Ok(ExitCode::SUCCESS);
+            }
+            let host = launch::Host {
+                path: std::env::var_os("PATH"),
+                in_zellij: env.in_zellij,
+            };
+            launch::run(&planned, profile.agent, &host)?;
+            Ok(ExitCode::SUCCESS)
+        }
         None if tty => anyhow::bail!("the tui isn't built yet"),
         None => {
             let harvest = load_and_warn(&settings.beans)?;
@@ -147,9 +164,11 @@ fn term_width() -> usize {
         .unwrap_or(100)
 }
 
-/// config mistakes are usage mistakes (2), an unknown slug is 3, the rest is 1
+/// config and profile mistakes are usage mistakes (2), an unknown slug is 3, the rest is 1
 fn exit_code(e: &anyhow::Error) -> ExitCode {
-    if e.downcast_ref::<ConfigError>().is_some() {
+    if e.downcast_ref::<ConfigError>().is_some()
+        || e.downcast_ref::<launch::UnknownProfile>().is_some()
+    {
         ExitCode::from(2)
     } else if e.downcast_ref::<UnknownSlug>().is_some() {
         ExitCode::from(3)
