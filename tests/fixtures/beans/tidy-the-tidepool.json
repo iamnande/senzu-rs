@@ -5,8 +5,6 @@
   "phase": "ground",
   "priority": "high",
   "issue": "TIDE-12",
-  "thread": null,
-  "plan": null,
   "next": {
     "text": "/iam-ground tidy-the-tidepool: what counts as tidy",
     "draft": "tidy-map"

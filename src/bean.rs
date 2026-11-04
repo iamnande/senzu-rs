@@ -34,7 +34,6 @@ pub struct Bean {
     /// how soon it matters, which is also the sort order
     pub priority: Priority,
     /// why the priority is what it is, when that needs saying
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub priority_note: Option<String>,
     /// a tracker id, as a plain string. senzu doesn't talk to trackers
     pub issue: Option<String>,

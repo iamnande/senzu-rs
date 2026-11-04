@@ -88,20 +88,20 @@ pub(crate) fn ls_table(beans: &[&Bean], width: usize) -> String {
 }
 
 /// the 3-line view, for the current stream
-pub(crate) fn brief(bean: &Bean, home: &Path) -> String {
+pub(crate) fn brief(bean: &Bean, home: &Path, fallback: &Path) -> String {
     format!(
         "{} · {} · {}\nnext: {}\nworktree: {}\n",
         bean.slug,
         bean.phase,
         bean.priority,
         bean.next.text,
-        worktree_label(bean, home),
+        worktree_label(bean, home, fallback),
     )
 }
 
 /// header fields, open items, the last log line
-pub(crate) fn show(bean: &Bean, home: &Path) -> String {
-    let mut out = brief(bean, home);
+pub(crate) fn show(bean: &Bean, home: &Path, fallback: &Path) -> String {
+    let mut out = brief(bean, home, fallback);
     let _ = writeln!(out, "title: {}", bean.title);
     if let Some(note) = &bean.priority_note {
         let _ = writeln!(out, "priority note: {note}");
@@ -139,10 +139,11 @@ pub(crate) fn show(bean: &Bean, home: &Path) -> String {
     out
 }
 
-fn worktree_label(bean: &Bean, home: &Path) -> String {
+/// the same words the tui uses
+fn worktree_label(bean: &Bean, home: &Path, fallback: &Path) -> String {
     match bean.worktree() {
         Some(path) => tildify(path, home),
-        None => "none".to_owned(),
+        None => format!("none, opens in {}", tildify(fallback, home)),
     }
 }
 
@@ -234,8 +235,18 @@ mod tests {
             )
             .unwrap(),
         ];
-        let got = show(&b, Path::new("/home/crab"));
+        let got = show(&b, Path::new("/home/crab"), Path::new("/home/crab/senzu"));
         assert!(got.contains("open:\n- [blocks] send it\n"), "{got}");
         assert!(got.ends_with("last: 2026-11-03 plan: second\n"), "{got}");
+    }
+
+    #[test]
+    fn no_worktree_says_where_it_opens_and_skips_what_isnt_there() {
+        let b = bean("crab", Priority::Urgent, "/iam-plan crab");
+        let got = show(&b, Path::new("/home/crab"), Path::new("/home/crab/senzu"));
+        assert!(got.contains("worktree: none, opens in ~/senzu\n"), "{got}");
+        for absent in ["issue:", "priority note:", "prd:", "page:", "open:", "null"] {
+            assert!(!got.contains(absent), "{absent} in {got}");
+        }
     }
 }
