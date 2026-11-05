@@ -16,14 +16,17 @@ use crate::cli::{Cli, Cmd};
 use crate::config::{self, Config, ConfigError, Env, Overrides};
 use crate::load::{self, Harvest};
 use crate::output::{self, Filter};
-use crate::{current, launch, telemetry, tui};
+use crate::{current, launch, tabs, telemetry, tui};
 
-/// logging first, so usage and config errors land in the log too. one root
-/// span per run, closed with its exit code
+/// parse, then log, then config, so config errors land in the log. a usage
+/// error logs to the env's state dir, since the parse never got to --state.
+/// one root span per run, closed with its exit code
 pub(crate) fn main() -> ExitCode {
     let env = Env::from_process();
-    telemetry::init(&env.state_dir());
-    let cli = match Cli::try_parse() {
+    let parsed = Cli::try_parse();
+    let state = parsed.as_ref().ok().and_then(|cli| cli.state.clone());
+    telemetry::init(&state.unwrap_or_else(|| env.state_dir()));
+    let cli = match parsed {
         Ok(cli) => cli,
         Err(e) => {
             // --help and --version come through here too, and aren't failures
@@ -68,12 +71,14 @@ fn run(cli: Cli, env: &Env, tty: bool) -> anyhow::Result<u8> {
             beans: cli.beans,
             agent: cli.agent,
             launch: cli.launch,
+            state: cli.state,
         };
         let settings = config::resolve(over, config, env)?;
         tracing::info!(
             beans = %settings.beans.display(),
             agent = %settings.agent,
             launch = %settings.launch,
+            state = %settings.state.display(),
             "settings resolved"
         );
         anyhow::Ok(settings)
@@ -117,7 +122,19 @@ fn run(cli: Cli, env: &Env, tty: bool) -> anyhow::Result<u8> {
         Some(Cmd::Open { slug, dry_run }) => {
             let profile = launch::Profile::resolve(&settings.agent, &settings.launch)?;
             let bean = found(load::one(&settings.beans, &slug)?);
-            let planned = launch::plan(&bean, profile, &settings.beans)?;
+            let exe = launch::this_exe()?;
+            let open_tabs = if profile.launcher == launch::Launcher::Zellij {
+                tabs::open_names(env)
+            } else {
+                Vec::new()
+            };
+            let site = launch::Site {
+                beans_dir: &settings.beans,
+                exe: &exe,
+                tabs: &open_tabs,
+                state_dir: &settings.state,
+            };
+            let planned = launch::plan(&bean, profile, site)?;
             tracing::info!(program = %planned.program, args = ?planned.args, cwd = %planned.cwd.display(), "launch planned");
             if dry_run {
                 println!("{}", serde_json::to_string_pretty(&planned)?);
@@ -135,7 +152,16 @@ fn run(cli: Cli, env: &Env, tty: bool) -> anyhow::Result<u8> {
             } else {
                 tui::Layout::Full
             };
-            tui::run(&settings.beans, env, tui::Opts { profile, layout })?;
+            let opts = tui::Opts {
+                profile,
+                layout,
+                tab: cli.tab.as_deref(),
+            };
+            let dirs = tabs::Dirs {
+                beans: &settings.beans,
+                state: &settings.state,
+            };
+            tui::run(dirs, env, opts)?;
             Ok(0)
         }
         None => {

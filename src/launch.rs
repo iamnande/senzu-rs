@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use crate::bean::{Bean, Phase};
 use crate::config::Env;
+use crate::tabs;
 
 /// an agent senzu knows how to start. a new agent is a new entry in AGENTS
 pub(crate) struct Agent {
@@ -83,11 +84,28 @@ pub(crate) fn launcher(name: &str) -> Result<Launcher, UnknownProfile> {
 #[derive(Debug, Serialize)]
 pub(crate) struct Launch {
     pub(crate) launcher: Launcher,
-    /// what runs: the agent, or zellij wrapping it
+    /// the bean already has a tab, so this goes back to it
+    pub(crate) existing_tab: bool,
+    /// what runs: the agent, or zellij making or finding its tab
     pub(crate) program: String,
     pub(crate) args: Vec<String>,
     pub(crate) cwd: PathBuf,
     pub(crate) session: String,
+    /// touched right before a new tab opens, so the sidebars know when it did
+    #[serde(skip)]
+    pub(crate) marker: Option<PathBuf>,
+}
+
+/// what a plan needs from around the bean
+#[derive(Clone, Copy)]
+pub(crate) struct Site<'a> {
+    pub(crate) beans_dir: &'a Path,
+    /// this senzu, run again as the new tab's sidebar
+    pub(crate) exe: &'a Path,
+    /// the zellij tabs open now, by name
+    pub(crate) tabs: &'a [String],
+    /// where the tab markers live
+    pub(crate) state_dir: &'a Path,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -128,39 +146,159 @@ impl Profile {
 }
 
 /// cwd is the bean's first worktree that exists, else the beans dir's parent
-pub(crate) fn plan(bean: &Bean, profile: Profile, beans_dir: &Path) -> Result<Launch, LaunchError> {
+/// for zellij, a bean with a tab goes back to it, and one without gets a new
+/// tab: the sidebar on the left, the agent on the right
+pub(crate) fn plan(bean: &Bean, profile: Profile, site: Site) -> Result<Launch, LaunchError> {
     let Profile { agent, launcher } = profile;
+    let slug = &bean.slug;
     if bean.phase == Phase::Done {
-        return Err(LaunchError::Done(bean.slug.clone()));
+        return Err(LaunchError::Done(slug.clone()));
     }
     let cwd = bean
         .worktree()
-        .unwrap_or_else(|| fallback_cwd(beans_dir))
+        .unwrap_or_else(|| fallback_cwd(site.beans_dir))
         .to_owned();
-    let mut program = agent.program.to_owned();
-    let mut args = (agent.args)(bean);
-    if launcher == Launcher::Zellij {
-        let mut wrapped = vec![
-            "run".into(),
-            "--cwd".into(),
-            cwd.display().to_string(),
-            "--name".into(),
-            bean.slug.clone(),
-            "--close-on-exit".into(),
-            "--".into(),
-            program,
-        ];
-        wrapped.append(&mut args);
-        program = "zellij".into();
-        args = wrapped;
-    }
-    Ok(Launch {
+    let mut planned = Launch {
         launcher,
-        program,
-        args,
+        existing_tab: false,
+        program: agent.program.to_owned(),
+        args: (agent.args)(bean),
         cwd,
-        session: bean.slug.clone(),
-    })
+        session: slug.clone(),
+        marker: None,
+    };
+    if launcher == Launcher::Exec {
+        return Ok(planned);
+    }
+    let args: Vec<String> = if site.tabs.contains(slug) {
+        planned.existing_tab = true;
+        vec!["action".into(), "go-to-tab-name".into(), slug.clone()]
+    } else {
+        let sidebar: Vec<String> = [
+            site.exe.display().to_string(),
+            "--beans".into(),
+            site.beans_dir.display().to_string(),
+            "--state".into(),
+            site.state_dir.display().to_string(),
+            "--agent".into(),
+            agent.name.into(),
+            "--launch".into(),
+            "zellij".into(),
+            "--sidebar".into(),
+            "--tab".into(),
+            slug.clone(),
+        ]
+        .into();
+        let mut agent_cmd = vec![planned.program.clone()];
+        agent_cmd.extend(planned.args.iter().cloned());
+        planned.marker = Some(tabs::marker(site.state_dir, slug));
+        vec![
+            "action".into(),
+            "new-tab".into(),
+            "--cwd".into(),
+            planned.cwd.display().to_string(),
+            "--layout-string".into(),
+            tab_layout(slug, &sidebar, &agent_cmd),
+        ]
+    };
+    planned.program = "zellij".into();
+    planned.args = args;
+    Ok(planned)
+}
+
+/// the sidebar plus zellij's pane frame
+const TAB_SIDEBAR_COLS: u16 = 38;
+
+/// the tab, with `{slots}` to fill
+const TAB_LAYOUT: &str = include_str!("tab.kdl");
+
+/// the agent takes focus and its pane closes when it exits, then the sidebar
+/// sees it gone and closes the tab. q closes the sidebar pane, and the agent
+/// takes the room. with the agent alone, zellij closes the tab when it exits
+fn tab_layout(slug: &str, sidebar: &[String], agent: &[String]) -> String {
+    let name = kdl(slug);
+    let cols = TAB_SIDEBAR_COLS.to_string();
+    let sidebar = command_node(sidebar);
+    let agent = command_node(agent);
+    fill(
+        TAB_LAYOUT,
+        &[
+            ("name", &name),
+            ("sidebar_cols", &cols),
+            ("sidebar", &sidebar),
+            ("agent", &agent),
+        ],
+    )
+}
+
+/// swap each `{slot}` for its value in one pass, so a value that happens to
+/// hold `{agent}` stays as written. kdl's own braces aren't slots, so they stay
+fn fill(template: &str, slots: &[(&str, &str)]) -> String {
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some((before, after)) = rest.split_once('{') {
+        out.push_str(before);
+        let filled = after.split_once('}').and_then(|(slot, tail)| {
+            slots
+                .iter()
+                .find(|(name, _)| *name == slot)
+                .map(|(_, value)| (*value, tail))
+        });
+        if let Some((value, tail)) = filled {
+            out.push_str(value);
+            rest = tail;
+        } else {
+            out.push('{');
+            rest = after;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// this binary, for the new tab's sidebar. after `cargo install` replaces it,
+/// linux names the running one `<path> (deleted)`, and the new one sits at the
+/// plain path, which is the one to run
+pub(crate) fn this_exe() -> std::io::Result<PathBuf> {
+    std::env::current_exe().map(undeleted)
+}
+
+fn undeleted(path: PathBuf) -> PathBuf {
+    match path.to_str().and_then(|p| p.strip_suffix(" (deleted)")) {
+        Some(p) => PathBuf::from(p),
+        None => path,
+    }
+}
+
+/// `command="p" { args "a" "b"; }`, or just the command when there are no args
+fn command_node(cmd: &[String]) -> String {
+    let Some((program, args)) = cmd.split_first() else {
+        return String::new();
+    };
+    let program = kdl(program);
+    if args.is_empty() {
+        return format!("command={program}");
+    }
+    let args: Vec<String> = args.iter().map(|a| kdl(a)).collect();
+    format!("command={program} {{ args {}; }}", args.join(" "))
+}
+
+/// a quoted kdl string
+fn kdl(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 /// where a bean with no worktree opens: the beans dir's parent, usually the
@@ -204,6 +342,12 @@ pub(crate) fn run(launch: &Launch) -> Result<(), LaunchError> {
             Err(spawn(cmd.exec()))
         }
         Launcher::Zellij => {
+            if let Some(marker) = &launch.marker {
+                // without it the tab just never reads as unwritten, so carry on
+                if let Err(e) = touch(marker) {
+                    tracing::error!(error = %e, marker = %marker.display(), "tab marker");
+                }
+            }
             let out = cmd
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
@@ -223,8 +367,16 @@ pub(crate) fn run(launch: &Launch) -> Result<(), LaunchError> {
     }
 }
 
+/// make the file if it's missing, and set its mtime to now either way
+fn touch(path: &Path) -> std::io::Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::File::create(path)?.set_modified(std::time::SystemTime::now())
+}
+
 /// `which`, without the crate: the first executable file named `program` on PATH
-fn find_on_path(program: &str, path: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
+pub(crate) fn find_on_path(program: &str, path: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
     use std::os::unix::fs::PermissionsExt as _;
     std::env::split_paths(path?)
         .map(|dir| dir.join(program))
@@ -260,10 +412,19 @@ mod tests {
         .unwrap()
     }
 
+    fn site(tabs: &'static [String]) -> Site<'static> {
+        Site {
+            beans_dir: Path::new("/s/beans"),
+            exe: Path::new("/bin/senzu"),
+            tabs,
+            state_dir: Path::new("/state"),
+        }
+    }
+
     #[test]
     fn claude_opens_on_the_phase_skill() {
         let b = bean("execute", None);
-        let got = plan(&b, profile(Launcher::Exec), Path::new("/s/beans")).unwrap();
+        let got = plan(&b, profile(Launcher::Exec), site(&[])).unwrap();
         assert_eq!(got.program, "claude");
         assert_eq!(
             got.args,
@@ -275,7 +436,7 @@ mod tests {
     #[test]
     fn no_worktree_falls_back_to_the_beans_parent() {
         let b = bean("plan", Some(Path::new("/nowhere/at/all")));
-        let got = plan(&b, profile(Launcher::Exec), Path::new("/s/beans")).unwrap();
+        let got = plan(&b, profile(Launcher::Exec), site(&[])).unwrap();
         assert_eq!(got.cwd, Path::new("/s"));
     }
 
@@ -283,38 +444,94 @@ mod tests {
     fn an_existing_worktree_wins() {
         let dir = tempfile::tempdir().unwrap();
         let b = bean("plan", Some(dir.path()));
-        let got = plan(&b, profile(Launcher::Exec), Path::new("/s/beans")).unwrap();
+        let got = plan(&b, profile(Launcher::Exec), site(&[])).unwrap();
         assert_eq!(got.cwd, dir.path());
     }
 
     #[test]
-    fn zellij_wraps_the_agent_in_a_named_pane() {
+    fn zellij_opens_a_tab_with_the_sidebar_and_the_agent() {
         let b = bean("plan", None);
-        let got = plan(&b, profile(Launcher::Zellij), Path::new("/s/beans")).unwrap();
+        let got = plan(&b, profile(Launcher::Zellij), site(&[])).unwrap();
         assert_eq!(got.program, "zellij");
+        assert!(!got.existing_tab);
         assert_eq!(
-            got.args,
-            [
-                "run",
-                "--cwd",
-                "/s",
-                "--name",
-                "crab-shell",
-                "--close-on-exit",
-                "--",
-                "claude",
-                "--name",
-                "crab-shell",
-                "/senzu-plan crab-shell",
-            ]
+            got.marker.as_deref(),
+            Some(Path::new("/state/tabs/crab-shell"))
         );
+        let [action, new_tab, cwd_flag, cwd, layout_flag, layout] = got.args.as_slice() else {
+            panic!("{:?}", got.args);
+        };
+        assert_eq!(
+            [action, new_tab, cwd_flag, cwd, layout_flag],
+            ["action", "new-tab", "--cwd", "/s", "--layout-string"]
+        );
+        assert!(
+            layout.contains(r#"tab name="crab-shell" focus=true"#),
+            "{layout}"
+        );
+        assert!(
+            layout.contains(
+                r#"pane size=38 name="senzu" close_on_exit=true command="/bin/senzu" { args "--beans" "/s/beans" "--state" "/state" "--agent" "claude" "--launch" "zellij" "--sidebar" "--tab" "crab-shell"; }"#
+            ),
+            "{layout}"
+        );
+        assert!(
+            layout.contains(
+                r#"pane name="crab-shell" focus=true close_on_exit=true command="claude" { args "--name" "crab-shell" "/senzu-plan crab-shell"; }"#
+            ),
+            "{layout}"
+        );
+        assert!(layout.contains("zellij:tab-bar") && layout.contains("zellij:status-bar"));
+    }
+
+    #[test]
+    fn zellij_goes_back_to_a_tab_thats_open() {
+        static TABS: std::sync::LazyLock<Vec<String>> =
+            std::sync::LazyLock::new(|| vec!["senzu".into(), "crab-shell".into()]);
+        let b = bean("plan", None);
+        let got = plan(&b, profile(Launcher::Zellij), site(&TABS)).unwrap();
+        assert!(got.existing_tab);
+        assert_eq!(got.marker, None, "the open time stays the first open's");
+        assert_eq!(got.args, ["action", "go-to-tab-name", "crab-shell"]);
+    }
+
+    #[test]
+    fn kdl_strings_escape_quotes_and_backslashes() {
+        assert_eq!(kdl(r#"a "b" \c"#), r#""a \"b\" \\c""#);
+        assert_eq!(kdl("one\ntwo"), r#""one\ntwo""#);
+        assert_eq!(command_node(&["x".into()]), r#"command="x""#);
     }
 
     #[test]
     fn done_beans_dont_launch() {
         let b = bean("done", None);
-        let got = plan(&b, profile(Launcher::Exec), Path::new("/s/beans"));
+        let got = plan(&b, profile(Launcher::Exec), site(&[]));
         assert!(matches!(got, Err(LaunchError::Done(_))));
+    }
+
+    #[test]
+    fn fill_swaps_slots_once_and_leaves_kdl_braces() {
+        let got = fill(
+            "pane {sidebar} {\n    {agent}\n} {nope}",
+            &[("sidebar", "\"{agent}\""), ("agent", "claude")],
+        );
+        assert_eq!(got, "pane \"{agent}\" {\n    claude\n} {nope}");
+    }
+
+    #[test]
+    fn the_tab_layout_has_no_slots_left() {
+        let layout = tab_layout("crab-shell", &["/bin/senzu".into()], &["claude".into()]);
+        for slot in ["{name}", "{sidebar_cols}", "{sidebar}", "{agent}"] {
+            assert!(!layout.contains(slot), "{slot} left in:\n{layout}");
+        }
+    }
+
+    #[test]
+    fn a_replaced_binary_runs_the_new_one() {
+        let got = undeleted(PathBuf::from("/home/crab/.cargo/bin/senzu (deleted)"));
+        assert_eq!(got, Path::new("/home/crab/.cargo/bin/senzu"));
+        let got = undeleted(PathBuf::from("/home/crab/.cargo/bin/senzu"));
+        assert_eq!(got, Path::new("/home/crab/.cargo/bin/senzu"));
     }
 
     #[test]

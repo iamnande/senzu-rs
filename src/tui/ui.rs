@@ -403,7 +403,7 @@ fn next_panel(frame: &mut Frame, stream: Stream, area: Rect) {
     let agent = view.agent;
     let hint = match (bean.phase, view.launcher) {
         (Phase::Done, _) => "done, nothing to open".to_owned(),
-        (_, Launcher::Zellij) => format!("opens {agent} in a new pane"),
+        (_, Launcher::Zellij) => format!("opens {agent} in its own tab"),
         (_, Launcher::Exec) => format!("swaps senzu for {agent}"),
     };
     lines.push(Line::from(vec![
@@ -836,7 +836,7 @@ mod tests {
     #[test]
     fn enter_says_what_it_will_do_for_the_launcher() {
         let got = text(&draw(&board(), Launcher::Zellij));
-        assert!(got.contains("opens crabby in a new pane"), "{got}");
+        assert!(got.contains("opens crabby in its own tab"), "{got}");
         assert!(got.contains("none, opens in ~/senzu"), "{got}");
         assert!(got.contains("ZELLIJ"), "{got}");
         let got = text(&draw(&board(), Launcher::Exec));

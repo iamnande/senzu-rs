@@ -7,6 +7,9 @@ use std::time::SystemTime;
 
 use serde::Deserialize;
 
+use crate::config::Env;
+use crate::launch;
+
 /// a bean with a live tab
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Live {
@@ -18,37 +21,74 @@ pub(crate) enum Live {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum TabsError {
-    #[error("zellij list-tabs: {0}")]
-    Spawn(std::io::Error),
-    #[error("zellij list-tabs exited with {0}")]
-    Status(std::process::ExitStatus),
+    #[error("zellij not found on PATH")]
+    NotOnPath,
+    #[error("zellij {0}: {1}")]
+    Spawn(String, std::io::Error),
+    #[error("zellij {0} exited with {1}")]
+    Status(String, std::process::ExitStatus),
     #[error("zellij list-tabs: {0}")]
     Parse(serde_json::Error),
 }
 
-/// the one field we want out of each tab
-#[derive(Deserialize)]
-struct Tab {
-    name: String,
+/// what we want out of each tab zellij lists
+#[derive(Debug, Deserialize)]
+pub(crate) struct Tab {
+    #[serde(rename = "tab_id")]
+    pub(crate) id: u64,
+    pub(crate) name: String,
+    /// the tiled panes you can focus, so not the bars
+    #[serde(rename = "selectable_tiled_panes_count")]
+    pub(crate) panes: usize,
 }
 
-/// the tab names in this zellij session
-pub(crate) fn names() -> Result<Vec<String>, TabsError> {
-    let out = Command::new("zellij")
-        .args(["action", "list-tabs", "--json"])
+/// the tabs in this zellij session
+pub(crate) fn list(env: &Env) -> Result<Vec<Tab>, TabsError> {
+    let out = zellij(env, &["list-tabs", "--json", "--panes"])?;
+    parse(&out)
+}
+
+/// close one tab, and everything in it
+pub(crate) fn close(env: &Env, id: u64) -> Result<(), TabsError> {
+    zellij(env, &["close-tab-by-id", &id.to_string()]).map(drop)
+}
+
+/// the open tab names, for planning a launch. none outside zellij, and none
+/// when zellij won't say, which costs at worst a second tab for the bean
+pub(crate) fn open_names(env: &Env) -> Vec<String> {
+    if !env.in_zellij {
+        return Vec::new();
+    }
+    match list(env) {
+        Ok(tabs) => tabs.into_iter().map(|t| t.name).collect(),
+        Err(e) => {
+            tracing::info!(error = %e, outcome = "planned as if no tabs are open", "list tabs");
+            Vec::new()
+        }
+    }
+}
+
+/// `zellij action <args>`, found on our PATH like the launch is, so a test's
+/// fake stands in and the real one never runs by accident
+fn zellij(env: &Env, args: &[&str]) -> Result<Vec<u8>, TabsError> {
+    let what = args.first().copied().unwrap_or_default();
+    let program =
+        launch::find_on_path("zellij", env.path.as_deref()).ok_or(TabsError::NotOnPath)?;
+    let out = Command::new(program)
+        .arg("action")
+        .args(args)
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output()
-        .map_err(TabsError::Spawn)?;
+        .map_err(|e| TabsError::Spawn(what.to_owned(), e))?;
     if !out.status.success() {
-        return Err(TabsError::Status(out.status));
+        return Err(TabsError::Status(what.to_owned(), out.status));
     }
-    parse(&out.stdout)
+    Ok(out.stdout)
 }
 
-fn parse(json: &[u8]) -> Result<Vec<String>, TabsError> {
-    let tabs: Vec<Tab> = serde_json::from_slice(json).map_err(TabsError::Parse)?;
-    Ok(tabs.into_iter().map(|t| t.name).collect())
+fn parse(json: &[u8]) -> Result<Vec<Tab>, TabsError> {
+    serde_json::from_slice(json).map_err(TabsError::Parse)
 }
 
 /// the launcher touches this when it opens a tab, so its mtime is the open time
@@ -96,10 +136,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_wants_only_the_names() {
-        let json = br#"[{"position":0,"name":"senzu","active":true,"tab_id":0},
-                        {"position":1,"name":"crab-shell","active":false,"tab_id":3}]"#;
-        assert_eq!(parse(json).unwrap(), ["senzu", "crab-shell"]);
+    fn parse_takes_ids_names_and_pane_counts() {
+        let json = br#"[{"position":0,"name":"senzu","active":true,"tab_id":0,"selectable_tiled_panes_count":1},
+                        {"position":1,"name":"crab-shell","active":false,"tab_id":3,"selectable_tiled_panes_count":2}]"#;
+        let got: Vec<_> = parse(json)
+            .unwrap()
+            .into_iter()
+            .map(|t| (t.id, t.name, t.panes))
+            .collect();
+        assert_eq!(got, [(0, "senzu".into(), 1), (3, "crab-shell".into(), 2)]);
         assert!(parse(b"not json").is_err());
     }
 
