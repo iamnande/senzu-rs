@@ -231,7 +231,7 @@ mod tests {
         serde_json::from_value(serde_json::json!({
             "schema": 1, "slug": slug, "title": title, "phase": phase, "priority": priority,
             "issue": null, "thread": null, "plan": null,
-            "next": { "text": format!("/iam-{phase} {slug}"), "draft": null },
+            "next": { "text": format!("/senzu-{phase} {slug}"), "draft": null },
         }))
         .unwrap()
     }

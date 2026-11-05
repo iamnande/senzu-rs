@@ -5,6 +5,6 @@
   "phase": "plan",
   "priority": "urgent",
   "next": {
-    "text": "/iam-plan harden-the-hut: the tech spec"
+    "text": "/senzu-plan harden-the-hut: the tech spec"
   }
 }

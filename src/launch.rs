@@ -19,8 +19,8 @@ pub(crate) const AGENTS: &[Agent] = &[Agent {
     args: claude_args,
 }];
 
-/// the phase skills are `/iam-<phase>` until the migration renames them `senzu-`
-const SKILL_PREFIX: &str = "iam-";
+/// the phase skills are `/senzu-<phase>`
+const SKILL_PREFIX: &str = "senzu-";
 
 /// open straight on the bean's next skill, so enter skips the router
 fn claude_args(b: &Bean) -> Vec<String> {
@@ -267,7 +267,7 @@ mod tests {
         assert_eq!(got.program, "claude");
         assert_eq!(
             got.args,
-            ["--name", "crab-shell", "/iam-execute crab-shell"]
+            ["--name", "crab-shell", "/senzu-execute crab-shell"]
         );
         assert_eq!(got.session, "crab-shell");
     }
@@ -305,7 +305,7 @@ mod tests {
                 "claude",
                 "--name",
                 "crab-shell",
-                "/iam-plan crab-shell",
+                "/senzu-plan crab-shell",
             ]
         );
     }
