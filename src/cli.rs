@@ -20,9 +20,18 @@ pub(crate) struct Cli {
     #[arg(long, global = true, env = "SENZU_LAUNCH")]
     pub(crate) launch: Option<String>,
 
+    /// where the logs and tab markers go. no config key, the log starts first
+    #[arg(long, global = true, env = "SENZU_STATE")]
+    pub(crate) state: Option<PathBuf>,
+
     /// the tui as a narrow list beside an agent, for the zellij tabs
     #[arg(long)]
     pub(crate) sidebar: bool,
+
+    /// the bean whose tab this sidebar lives in. it starts selected, and the
+    /// tab closes once the agent beside it exits
+    #[arg(long, requires = "sidebar")]
+    pub(crate) tab: Option<String>,
 
     #[command(subcommand)]
     pub(crate) cmd: Option<Cmd>,

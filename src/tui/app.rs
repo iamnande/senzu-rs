@@ -71,6 +71,16 @@ impl Board {
         self.refresh(keep.as_deref());
     }
 
+    /// select `slug`, showing everything when the default view hides it
+    pub(crate) fn focus(&mut self, slug: &str) {
+        self.refresh(Some(slug));
+        if self.selected_bean().is_some_and(|b| b.slug == slug) {
+            return;
+        }
+        self.all = true;
+        self.refresh(Some(slug));
+    }
+
     /// the draft ids the selected bean links to: next's first, then open items
     /// in order, each once even when two things link the same draft
     pub(crate) fn drafts_for_selected(&self) -> Vec<&str> {
@@ -432,6 +442,18 @@ mod tests {
         assert_eq!(board.mode, Mode::Draft(0));
         board.update(KeyEvent::from(KeyCode::Esc));
         assert_eq!(board.mode, Mode::List);
+    }
+
+    #[test]
+    fn focus_selects_a_bean_and_shows_all_when_it_is_hidden() {
+        let mut board = board();
+        board.focus("harden-the-hut");
+        assert_eq!(selected(&board), "harden-the-hut");
+        assert!(!board.all);
+        // medium isn't in the default view
+        board.focus("kelp-budget");
+        assert_eq!(selected(&board), "kelp-budget");
+        assert!(board.all);
     }
 
     #[test]

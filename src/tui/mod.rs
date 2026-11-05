@@ -25,9 +25,11 @@ pub(crate) enum Layout {
 
 /// how the tui runs, from the flags
 #[derive(Clone, Copy)]
-pub(crate) struct Opts {
+pub(crate) struct Opts<'a> {
     pub(crate) profile: Profile,
     pub(crate) layout: Layout,
+    /// the bean whose tab this sidebar lives in
+    pub(crate) tab: Option<&'a str>,
 }
 
 /// what's left to do once the screen is handed back
@@ -40,23 +42,22 @@ enum Outcome {
 /// what stays fixed for the whole session
 #[derive(Clone, Copy)]
 struct Ctx<'a> {
-    beans_dir: &'a Path,
+    dirs: tabs::Dirs<'a>,
     env: &'a Env,
-    opts: Opts,
+    opts: Opts<'a>,
 }
 
-/// exec hands the terminal to the agent, zellij opens a pane and comes back
-pub(crate) fn run(beans_dir: &Path, env: &Env, opts: Opts) -> anyhow::Result<()> {
+/// exec hands the terminal to the agent, zellij opens or finds a tab and comes back
+pub(crate) fn run(dirs: tabs::Dirs, env: &Env, opts: Opts) -> anyhow::Result<()> {
     let mut board = Board::new(Vec::new());
-    reload(&mut board, beans_dir)?;
+    reload(&mut board, dirs.beans)?;
+    if let Some(slug) = opts.tab {
+        board.focus(slug);
+    }
     // init sets raw mode and the alternate screen, and hooks panics to undo both
     let mut terminal = ratatui::init();
     title::push();
-    let ctx = Ctx {
-        beans_dir,
-        env,
-        opts,
-    };
+    let ctx = Ctx { dirs, env, opts };
     let outcome = event_loop(&mut terminal, &mut board, ctx);
     title::pop();
     ratatui::restore();
@@ -79,7 +80,7 @@ fn event_loop(
             today: jiff::Zoned::now().date(),
             agent: ctx.opts.profile.agent.name,
             launcher: ctx.opts.profile.launcher,
-            fallback: launch::fallback_cwd(ctx.beans_dir),
+            fallback: launch::fallback_cwd(ctx.dirs.beans),
             layout: ctx.opts.layout,
         };
         terminal.draw(|frame| {
@@ -90,8 +91,14 @@ fn event_loop(
             watch.tick(board, ctx);
             continue;
         }
-        let Event::Key(key) = event::read()? else {
-            continue;
+        let key = match event::read()? {
+            Event::Key(key) => key,
+            // the agent's pane closing widens ours, so look now, not next tick
+            Event::Resize(..) => {
+                watch.tick(board, ctx);
+                continue;
+            }
+            _ => continue,
         };
         if key.kind != KeyEventKind::Press {
             continue;
@@ -101,7 +108,7 @@ fn event_loop(
             Some(Action::Quit) => return Ok(Outcome::Quit),
             Some(Action::Reload) => {
                 let _span = tracing::info_span!("reload").entered();
-                reload(board, ctx.beans_dir)?;
+                reload(board, ctx.dirs.beans)?;
                 watch.tick(board, ctx);
                 if board.status.is_none() {
                     board.status = Some(format!("reloaded {} beans", board.beans.len()));
@@ -118,10 +125,13 @@ fn event_loop(
     }
 }
 
-/// keeps the live tabs fresh. a failing zellij is logged once, not every tick
+/// keeps the live tabs fresh, and closes this sidebar's tab once its agent is
+/// gone. a failing zellij is logged once, not every tick
 #[derive(Default)]
 struct Watch {
     last_error: Option<String>,
+    /// the agent showed up beside us, so one pane left means it exited
+    agent_seen: bool,
 }
 
 impl Watch {
@@ -129,10 +139,10 @@ impl Watch {
         if !ctx.env.in_zellij {
             return;
         }
-        let names = match tabs::names() {
-            Ok(names) => {
+        let list = match tabs::list(ctx.env) {
+            Ok(list) => {
                 self.last_error = None;
-                names
+                list
             }
             Err(e) => {
                 let msg = e.to_string();
@@ -143,12 +153,35 @@ impl Watch {
                 Vec::new()
             }
         };
-        let state = ctx.env.state_dir();
-        let dirs = tabs::Dirs {
-            beans: ctx.beans_dir,
-            state: &state,
+        self.close_when_alone(&list, ctx);
+        let names: Vec<String> = list.into_iter().map(|t| t.name).collect();
+        board.live = tabs::live(
+            &names,
+            board.beans.iter().map(|b| b.slug.as_str()),
+            ctx.dirs,
+        );
+    }
+
+    /// the agent's pane closes when it exits, leaving just us. closing the tab
+    /// ends this process too. a pane you split in beside us keeps the tab open
+    fn close_when_alone(&mut self, list: &[tabs::Tab], ctx: Ctx) {
+        let Some(home) = ctx.opts.tab else {
+            return;
         };
-        board.live = tabs::live(&names, board.beans.iter().map(|b| b.slug.as_str()), dirs);
+        let Some(tab) = list.iter().find(|t| t.name == home) else {
+            return;
+        };
+        if tab.panes > 1 {
+            self.agent_seen = true;
+            return;
+        }
+        if !self.agent_seen {
+            return;
+        }
+        tracing::info!(tab = home, outcome = "closing its tab", "agent exited");
+        if let Err(e) = tabs::close(ctx.env, tab.id) {
+            tracing::error!(error = %e, "close tab");
+        }
     }
 }
 
@@ -156,7 +189,27 @@ impl Watch {
 fn launch_from(board: &mut Board, slug: &str, ctx: Ctx) -> Option<Outcome> {
     let profile = ctx.opts.profile;
     let bean = board.beans.iter().find(|b| b.slug == slug)?;
-    let planned = match launch::plan(bean, profile, ctx.beans_dir)
+    // fresh, not the last tick's: a stale list could open a bean's tab twice
+    let open_tabs = if profile.launcher == Launcher::Zellij {
+        tabs::open_names(ctx.env)
+    } else {
+        Vec::new()
+    };
+    let exe = match launch::this_exe() {
+        Ok(exe) => exe,
+        Err(e) => {
+            tracing::error!(error = %e, "current exe");
+            board.status = Some(format!("can't find senzu itself: {e}"));
+            return None;
+        }
+    };
+    let site = launch::Site {
+        beans_dir: ctx.dirs.beans,
+        exe: &exe,
+        tabs: &open_tabs,
+        state_dir: ctx.dirs.state,
+    };
+    let planned = match launch::plan(bean, profile, site)
         .and_then(|p| launch::preflight(&p, profile.agent, ctx.env).map(|()| p))
     {
         Ok(p) => p,
@@ -170,7 +223,8 @@ fn launch_from(board: &mut Board, slug: &str, ctx: Ctx) -> Option<Outcome> {
         return Some(Outcome::Exec(planned));
     }
     board.status = Some(match launch::run(&planned) {
-        Ok(()) => format!("opened {slug} in a new pane"),
+        Ok(()) if planned.existing_tab => format!("back to {slug}'s tab"),
+        Ok(()) => format!("opened {slug} in a new tab"),
         Err(e) => {
             tracing::error!(error = %e, "launch failed");
             e.to_string()

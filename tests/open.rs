@@ -53,6 +53,7 @@ fn dry_run_is_claude_on_the_phase_skill_in_the_beans_parent() {
         got,
         json!({
             "launcher": "exec",
+            "existing_tab": false,
             "program": "claude",
             "args": ["--name", "crab-shell", "/senzu-execute crab-shell"],
             "cwd": world.home.path(),
@@ -213,7 +214,7 @@ fn exec_keeps_the_log_lines_before_it() {
 }
 
 #[test]
-fn zellij_runs_the_agent_in_a_pane_and_waits() {
+fn zellij_opens_a_new_tab_and_marks_when() {
     let world = World::new();
     let bin = fake_bin(&world, &["claude", "zellij"]);
     let home = world.home.path().display().to_string();
@@ -224,15 +225,52 @@ fn zellij_runs_the_agent_in_a_pane_and_waits() {
         .args(["open", "harden-the-hut"])
         .assert()
         .success()
-        // zellij prints its pane id, which would land on top of the tui
+        // zellij prints the new tab's id, which would land on top of the tui
         .stdout(predicate::str::is_empty());
+    // the fake's list-tabs isn't json, so senzu plans as if no tab is open
     let got = std::fs::read_to_string(world.home.path().join("zellij.out")).unwrap();
-    assert_eq!(
-        got,
-        format!(
-            "zellij in {home}\nrun\n--cwd\n{home}\n--name\nharden-the-hut\n--close-on-exit\n--\nclaude\n--name\nharden-the-hut\n/senzu-plan harden-the-hut\n"
-        )
+    let want = format!(
+        "zellij in {home}\naction\nnew-tab\n--cwd\n{home}\n--layout-string\n// the tab senzu opens"
     );
+    assert!(got.starts_with(&want), "{got}");
+    assert!(
+        got.contains(r#"tab name="harden-the-hut" focus=true"#),
+        "{got}"
+    );
+    let marker = world
+        .home
+        .path()
+        .join(".local/state/senzu/tabs/harden-the-hut");
+    assert!(marker.is_file(), "no marker at {}", marker.display());
+}
+
+#[test]
+fn zellij_goes_back_to_an_open_tab() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let world = World::new();
+    let bin = fake_bin(&world, &["claude"]);
+    let zellij = bin.join("zellij");
+    // lists a tab for the bean, and writes down every other call
+    std::fs::write(
+        &zellij,
+        "#!/bin/sh\nif [ \"$2\" = list-tabs ]; then\n  echo '[{\"tab_id\":4,\"name\":\"harden-the-hut\",\"selectable_tiled_panes_count\":2}]'\n  exit 0\nfi\nprintf '%s\\n' \"$@\" > \"$HOME/zellij.out\"\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&zellij, std::fs::Permissions::from_mode(0o755)).unwrap();
+    world
+        .senzu()
+        .env("PATH", &bin)
+        .env("ZELLIJ", "0")
+        .args(["open", "harden-the-hut"])
+        .assert()
+        .success();
+    let got = std::fs::read_to_string(world.home.path().join("zellij.out")).unwrap();
+    assert_eq!(got, "action\ngo-to-tab-name\nharden-the-hut\n");
+    let marker = world
+        .home
+        .path()
+        .join(".local/state/senzu/tabs/harden-the-hut");
+    assert!(!marker.exists(), "going back keeps the first open's time");
 }
 
 #[test]
@@ -271,4 +309,59 @@ fn zellij_launch_outside_zellij_exits_1() {
         .stderr(predicate::str::contains(
             "only works inside zellij, try --launch exec",
         ));
+}
+
+#[test]
+fn the_state_flag_moves_the_marker_the_log_and_the_sidebar() {
+    let world = World::new();
+    let bin = fake_bin(&world, &["claude", "zellij"]);
+    let state = world.home.path().join("elsewhere");
+    world
+        .senzu()
+        .env("PATH", &bin)
+        .env("ZELLIJ", "0")
+        .arg("--state")
+        .arg(&state)
+        .args(["open", "harden-the-hut"])
+        .assert()
+        .success();
+    assert!(state.join("tabs/harden-the-hut").is_file());
+    let logs = std::fs::read_dir(&state).unwrap().flatten();
+    assert!(
+        logs.into_iter()
+            .any(|f| f.file_name().to_string_lossy().ends_with(".log")),
+        "no log in {}",
+        state.display()
+    );
+    let got = std::fs::read_to_string(world.home.path().join("zellij.out")).unwrap();
+    let want = format!(r#""--state" "{}""#, state.display());
+    assert!(got.contains(&want), "{got}");
+}
+
+#[test]
+fn senzu_state_in_the_env_works_too() {
+    let world = World::new();
+    let bin = fake_bin(&world, &["claude", "zellij"]);
+    let state = world.home.path().join("from-env");
+    world
+        .senzu()
+        .env("PATH", &bin)
+        .env("ZELLIJ", "0")
+        .env("SENZU_STATE", &state)
+        .args(["open", "harden-the-hut"])
+        .assert()
+        .success();
+    assert!(state.join("tabs/harden-the-hut").is_file());
+}
+
+#[test]
+fn state_in_the_config_is_an_unknown_key() {
+    let world = World::new();
+    write_config(world.home.path(), "state = \"/nope\"\n");
+    world
+        .senzu()
+        .args(["open", "crab-shell", "--dry-run"])
+        .assert()
+        .code(predicate::ne(0))
+        .stderr(predicate::str::contains("state"));
 }

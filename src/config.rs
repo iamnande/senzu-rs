@@ -57,6 +57,7 @@ pub(crate) struct Overrides {
     pub(crate) beans: Option<PathBuf>,
     pub(crate) agent: Option<String>,
     pub(crate) launch: Option<String>,
+    pub(crate) state: Option<PathBuf>,
 }
 
 /// the process environment senzu uses, read once so tests can hand in their own
@@ -67,6 +68,7 @@ pub(crate) struct Env {
     pub(crate) path: Option<OsString>,
     pub(crate) xdg_config_home: Option<PathBuf>,
     pub(crate) xdg_state_home: Option<PathBuf>,
+    pub(crate) senzu_state: Option<PathBuf>,
 }
 
 impl Env {
@@ -79,6 +81,7 @@ impl Env {
             path: std::env::var_os("PATH"),
             xdg_config_home: path("XDG_CONFIG_HOME"),
             xdg_state_home: path("XDG_STATE_HOME"),
+            senzu_state: path("SENZU_STATE"),
         }
     }
 
@@ -89,9 +92,11 @@ impl Env {
             .join("config.toml")
     }
 
-    /// `$XDG_STATE_HOME/senzu`, else `~/.local/state/senzu`
+    /// `$SENZU_STATE`, else `$XDG_STATE_HOME/senzu`, else `~/.local/state/senzu`
     pub(crate) fn state_dir(&self) -> PathBuf {
-        xdg_dir(self.xdg_state_home.as_deref(), &self.home, ".local/state").join("senzu")
+        self.senzu_state.clone().unwrap_or_else(|| {
+            xdg_dir(self.xdg_state_home.as_deref(), &self.home, ".local/state").join("senzu")
+        })
     }
 }
 
@@ -108,17 +113,22 @@ pub(crate) struct Settings {
     pub(crate) beans: PathBuf,
     pub(crate) agent: String,
     pub(crate) launch: String,
+    /// the logs and the tab markers
+    pub(crate) state: PathBuf,
 }
 
 /// flag > env (clap already merged those) > config > default.
 /// the beans dir has no default. the launch default detects: zellij when
-/// we're inside one, else exec.
+/// we're inside one, else exec. state has no config key: the log starts
+/// before the config loads, so a config can't say where it goes
 pub(crate) fn resolve(over: Overrides, config: Config, env: &Env) -> Result<Settings, ConfigError> {
     let beans = over
         .beans
         .or(config.beans)
         .map(|p| expand_tilde(p, &env.home))
         .ok_or_else(|| ConfigError::NoBeans(env.config_path()))?;
+    // absolute like state: the sidebar gets it too, and the senzu dir is its parent
+    let beans = std::path::absolute(&beans).unwrap_or(beans);
     let agent = over
         .agent
         .or(config.agent)
@@ -128,10 +138,14 @@ pub(crate) fn resolve(over: Overrides, config: Config, env: &Env) -> Result<Sett
         .launch
         .or(config.launch)
         .unwrap_or_else(|| detected.to_owned());
+    // absolute, since a sidebar gets it handed over and runs somewhere else
+    let state = over.state.unwrap_or_else(|| env.state_dir());
+    let state = std::path::absolute(&state).unwrap_or(state);
     Ok(Settings {
         beans,
         agent,
         launch,
+        state,
     })
 }
 
@@ -169,6 +183,7 @@ mod tests {
             beans: Some("/from/flag".into()),
             agent: Some("flag-agent".into()),
             launch: Some("exec".into()),
+            state: Some("/from/flag/state".into()),
         };
         let got = resolve(over, config("config-agent", "zellij"), &env(false)).unwrap();
         assert_eq!(
@@ -177,6 +192,7 @@ mod tests {
                 beans: "/from/flag".into(),
                 agent: "flag-agent".into(),
                 launch: "exec".into(),
+                state: "/from/flag/state".into(),
             }
         );
     }
@@ -195,6 +211,7 @@ mod tests {
                 beans: "/from/config".into(),
                 agent: "config-agent".into(),
                 launch: "exec".into(),
+                state: "/home/crab/.local/state/senzu".into(),
             }
         );
     }
@@ -216,6 +233,7 @@ mod tests {
                 beans: "/b".into(),
                 agent: "claude".into(),
                 launch: "exec".into(),
+                state: "/home/crab/.local/state/senzu".into(),
             }
         );
     }
@@ -255,6 +273,37 @@ mod tests {
         };
         let got = resolve(Overrides::default(), cfg, &env(false)).unwrap();
         assert_eq!(got.beans, PathBuf::from("/home/crab/beans"));
+    }
+
+    #[test]
+    fn senzu_state_beats_xdg() {
+        let mut env = env(false);
+        env.xdg_state_home = Some("/xdg".into());
+        assert_eq!(env.state_dir(), PathBuf::from("/xdg/senzu"));
+        env.senzu_state = Some("/mine".into());
+        assert_eq!(env.state_dir(), PathBuf::from("/mine"));
+    }
+
+    #[test]
+    fn a_relative_beans_dir_comes_out_absolute() {
+        let over = Overrides {
+            beans: Some("beans".into()),
+            ..Overrides::default()
+        };
+        let got = resolve(over, Config::default(), &env(false)).unwrap();
+        assert!(got.beans.is_absolute(), "{}", got.beans.display());
+        assert!(got.beans.ends_with("beans"), "{}", got.beans.display());
+    }
+
+    #[test]
+    fn a_relative_state_dir_comes_out_absolute() {
+        let over = Overrides {
+            state: Some("rel/state".into()),
+            ..beans_only()
+        };
+        let got = resolve(over, Config::default(), &env(false)).unwrap();
+        assert!(got.state.is_absolute(), "{}", got.state.display());
+        assert!(got.state.ends_with("rel/state"), "{}", got.state.display());
     }
 
     #[test]

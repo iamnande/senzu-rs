@@ -1,0 +1,19 @@
+// the tab senzu opens for a bean. launch::tab_layout fills the {slots}.
+// zellij's default bars need the template: a layout without one gets none
+layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+    tab name={name} focus=true {
+        pane split_direction="vertical" {
+            pane size={sidebar_cols} name="senzu" close_on_exit=true {sidebar}
+            pane name={name} focus=true close_on_exit=true {agent}
+        }
+    }
+}

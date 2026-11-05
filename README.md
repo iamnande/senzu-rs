@@ -17,12 +17,13 @@ every setting resolves flag > env > config > default. the config is `~/.config/s
 | beans dir | `--beans` | `SENZU_BEANS` | `beans` | none, senzu asks for one |
 | agent | `--agent` | `SENZU_AGENT` | `agent` | `claude` |
 | launch | `--launch` | `SENZU_LAUNCH` | `launch` | `zellij` inside zellij, else `exec` |
+| state dir | `--state` | `SENZU_STATE` | none, the log starts before the config | `$XDG_STATE_HOME/senzu`, else `~/.local/state/senzu` |
 
 ```toml
 beans = "~/path/to/beans"
 ```
 
-logs go to `~/.local/state/senzu/` (or under `$XDG_STATE_HOME`), a file a day, a week kept. `RUST_LOG` sets the level.
+logs go to the state dir, a file a day, a week kept. `RUST_LOG` sets the level.
 
 ## use
 
