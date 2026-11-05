@@ -17,6 +17,21 @@ use crate::tui::theme::{ACCENT, BG, FAINT, FG, GREEN, MUTED, PANEL, RAISED, RED,
 /// days without a log entry before a stream reads as stale
 const STALE_DAYS: i32 = 7;
 const SIDEBAR: u16 = 34;
+/// the blank row or column between areas, for `Layout::spacing` and the odd
+/// spacer row where the gaps aren't even
+const SPACING: u16 = 1;
+/// a block title takes a row of its own
+const TITLE_ROW: u16 = 1;
+const PANEL_PADDING: Padding = Padding::new(2, 2, 1, 0);
+/// title, priority, a gap, the phase, a gap, the dots
+const NOW_ROWS: u16 = 7;
+/// the longest phase name, and two cells of air
+const PHASE_COL: usize = 9;
+/// the extra air on the right and bottom keeps the keys off the edge
+const POPUP_PADDING: Padding = Padding::new(2, 4, 1, 2);
+const POPUP_MIN_W: usize = 30;
+/// what the popup keeps clear of the screen edge, each side
+const POPUP_MARGIN: u16 = 1;
 
 /// the six phases a stream moves through, done aside
 const STEPS: [Phase; 6] = [
@@ -65,7 +80,7 @@ fn panel<'a>(title: &str) -> Block<'a> {
     Block::new()
         .style(Style::new().bg(PANEL).fg(FG))
         .title(Span::styled(format!("  {title}"), fg(FG).bold()))
-        .padding(Padding::new(2, 2, 1, 0))
+        .padding(PANEL_PADDING)
 }
 
 /// sidebar on the left, the selected stream on the right, a bar along the bottom
@@ -73,12 +88,9 @@ pub(crate) fn render(frame: &mut Frame, board: &Board, view: View) {
     frame.render_widget(Block::new().style(Style::new().bg(BG).fg(FG)), frame.area());
     let [main, bar] =
         Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
-    let [side, _, right] = Layout::horizontal([
-        Constraint::Length(SIDEBAR),
-        Constraint::Length(1),
-        Constraint::Min(30),
-    ])
-    .areas(main.inner(Margin::new(1, 1)));
+    let [side, right] = Layout::horizontal([Constraint::Length(SIDEBAR), Constraint::Min(30)])
+        .spacing(SPACING)
+        .areas(main.inner(Margin::new(1, 1)));
 
     let screen = Screen { board, view };
     sidebar(frame, screen, side);
@@ -164,7 +176,7 @@ fn sidebar(frame: &mut Frame, screen: Screen, area: Rect) {
     );
 
     let [_, filter_line] =
-        Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(filter);
+        Layout::vertical([Constraint::Length(SPACING), Constraint::Length(1)]).areas(filter);
     if board.mode == Mode::Filter || !board.filter.is_empty() {
         let cursor = if board.mode == Mode::Filter {
             "▏"
@@ -256,22 +268,19 @@ fn list_items(board: &Board, today: Date, width: usize) -> (Vec<ListItem<'static
 
 fn detail(frame: &mut Frame, stream: Stream, area: Rect) {
     let bean = stream.bean;
-    // label, a blank row, the items, a blank row
-    let open_h = cells(bean.open.len().max(1)).saturating_add(3);
-    let [top, _, open, _, log] = Layout::vertical([
-        Constraint::Length(9),
-        Constraint::Length(1),
+    let chrome = TITLE_ROW + PANEL_PADDING.top + PANEL_PADDING.bottom;
+    // open ends on a blank row, so the log doesn't butt up against it
+    let open_h = cells(bean.open.len().max(1)).saturating_add(chrome + SPACING);
+    let [top, open, log] = Layout::vertical([
+        Constraint::Length(NOW_ROWS + chrome),
         Constraint::Length(open_h),
-        Constraint::Length(1),
         Constraint::Min(3),
     ])
+    .spacing(SPACING)
     .areas(area);
-    let [now, _, next] = Layout::horizontal([
-        Constraint::Percentage(40),
-        Constraint::Length(1),
-        Constraint::Percentage(60),
-    ])
-    .areas(top);
+    let [now, next] = Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
+        .spacing(SPACING)
+        .areas(top);
 
     now_panel(frame, bean, now);
     next_panel(frame, stream, next);
@@ -287,9 +296,9 @@ fn now_panel(frame: &mut Frame, bean: &Bean, area: Rect) {
     let [title, priority, _, hero, _, steps] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
-        Constraint::Length(1),
+        Constraint::Length(SPACING),
         Constraint::Length(2),
-        Constraint::Length(1),
+        Constraint::Length(SPACING),
         Constraint::Length(1),
     ])
     .areas(inner);
@@ -304,15 +313,16 @@ fn now_panel(frame: &mut Frame, bean: &Bean, area: Rect) {
     } else {
         ACCENT
     };
-    let mut line = vec![
+    let mut line = Line::from(vec![
         Span::styled("● ", fg(color)),
         Span::styled(bean.priority.to_string(), fg(color).bold()),
-    ];
+    ]);
     if let Some(note) = &bean.priority_note {
-        let room = width.saturating_sub(2 + bean.priority.to_string().len() + 5);
-        line.push(Span::styled(format!("  ·  {}", fit(note, room)), fg(MUTED)));
+        let sep = "  ·  ";
+        let room = width.saturating_sub(line.width() + sep.chars().count());
+        line.push_span(Span::styled(format!("{sep}{}", fit(note, room)), fg(MUTED)));
     }
-    frame.render_widget(Paragraph::new(Line::from(line)), priority);
+    frame.render_widget(Paragraph::new(line), priority);
     // octants, half the logo's height. needs a font with unicode 16 octants,
     // ghostty draws its own
     frame.render_widget(
@@ -417,22 +427,22 @@ fn open_panel(frame: &mut Frame, bean: &Bean, area: Rect) {
 
 /// newest first, as many as fit, each cut to one line
 fn log_panel(frame: &mut Frame, bean: &Bean, area: Rect) {
-    // "nov 03  " + a 9-wide phase, inside 2+2 padding
-    let room = usize::from(area.width.saturating_sub(4 + 8 + 9));
+    let inner = usize::from(
+        area.width
+            .saturating_sub(PANEL_PADDING.left + PANEL_PADDING.right),
+    );
     let lines: Vec<Line> = bean
         .log
         .iter()
         .rev()
         .map(|e| {
-            let text = fit(&e.text, room);
-            Line::from(vec![
-                Span::styled(
-                    e.date.strftime("%b %d  ").to_string().to_lowercase(),
-                    fg(FAINT),
-                ),
-                Span::styled(format!("{:<9}", e.phase.to_string()), fg(MUTED)),
-                Span::raw(text),
-            ])
+            let date = Span::styled(
+                e.date.strftime("%b %d  ").to_string().to_lowercase(),
+                fg(FAINT),
+            );
+            let phase = Span::styled(format!("{:<PHASE_COL$}", e.phase.to_string()), fg(MUTED));
+            let room = inner.saturating_sub(date.width() + phase.width());
+            Line::from(vec![date, phase, Span::raw(fit(&e.text, room))])
         })
         .collect();
     frame.render_widget(
@@ -547,19 +557,23 @@ fn draft_lines(board: &Board, bean: &Bean, n: usize) -> (String, Vec<Line<'stati
 /// a raised panel in the middle, with everything behind it faded
 fn popup(frame: &mut Frame, area: Rect, popup: Popup) {
     let Popup { title, lines } = popup;
-    // at least 30 wide, unless the screen can't fit that
-    let max_w = usize::from(area.width.saturating_sub(8));
+    let chrome_w = POPUP_PADDING.left + POPUP_PADDING.right;
+    let chrome_h = TITLE_ROW + POPUP_PADDING.top + POPUP_PADDING.bottom;
+    let max_w = usize::from(area.width.saturating_sub(chrome_w + 2 * POPUP_MARGIN));
+    // the min gives way when the screen can't fit it
     let width = lines
         .iter()
         .map(Line::width)
         .max()
         .unwrap_or(0)
-        .clamp(30.min(max_w), max_w);
-    let height = lines.len().min(usize::from(area.height.saturating_sub(4)));
-    let [v] = Layout::vertical([Constraint::Length(cells(height).saturating_add(4))])
+        .clamp(POPUP_MIN_W.min(max_w), max_w);
+    let height = lines
+        .len()
+        .min(usize::from(area.height.saturating_sub(chrome_h)));
+    let [v] = Layout::vertical([Constraint::Length(cells(height).saturating_add(chrome_h))])
         .flex(Flex::Center)
         .areas(area);
-    let [r] = Layout::horizontal([Constraint::Length(cells(width).saturating_add(6))])
+    let [r] = Layout::horizontal([Constraint::Length(cells(width).saturating_add(chrome_w))])
         .flex(Flex::Center)
         .areas(v);
 
@@ -583,7 +597,7 @@ fn popup(frame: &mut Frame, area: Rect, popup: Popup) {
             Block::new()
                 .style(Style::new().bg(RAISED).fg(FG))
                 .title(Span::styled(format!("  {title}"), fg(FG).bold()))
-                .padding(Padding::new(2, 2, 1, 1)),
+                .padding(POPUP_PADDING),
         ),
         r,
     );
