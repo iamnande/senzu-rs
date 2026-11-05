@@ -36,4 +36,4 @@ senzu check           validate every bean
 
 ## license
 
-agpl-3.0-only, see [LICENSE](LICENSE).
+`AGPL-3.0-only`, see [LICENSE](LICENSE).
