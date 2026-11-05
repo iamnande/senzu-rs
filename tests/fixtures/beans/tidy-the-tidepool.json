@@ -6,7 +6,7 @@
   "priority": "high",
   "issue": "TIDE-12",
   "next": {
-    "text": "/iam-ground tidy-the-tidepool: what counts as tidy",
+    "text": "/senzu-ground tidy-the-tidepool: what counts as tidy",
     "draft": "tidy-map"
   },
   "drafts": [

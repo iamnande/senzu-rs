@@ -54,7 +54,7 @@ fn dry_run_is_claude_on_the_phase_skill_in_the_beans_parent() {
         json!({
             "launcher": "exec",
             "program": "claude",
-            "args": ["--name", "crab-shell", "/iam-execute crab-shell"],
+            "args": ["--name", "crab-shell", "/senzu-execute crab-shell"],
             "cwd": world.home.path(),
             "session": "crab-shell",
         })
@@ -192,7 +192,7 @@ fn exec_replaces_senzu_with_the_agent() {
         .assert()
         .success()
         .stdout(format!(
-            "claude in {}\n--name\ncrab-shell\n/iam-execute crab-shell\n",
+            "claude in {}\n--name\ncrab-shell\n/senzu-execute crab-shell\n",
             world.home.path().display()
         ));
 }
@@ -230,7 +230,7 @@ fn zellij_runs_the_agent_in_a_pane_and_waits() {
     assert_eq!(
         got,
         format!(
-            "zellij in {home}\nrun\n--cwd\n{home}\n--name\nharden-the-hut\n--close-on-exit\n--\nclaude\n--name\nharden-the-hut\n/iam-plan harden-the-hut\n"
+            "zellij in {home}\nrun\n--cwd\n{home}\n--name\nharden-the-hut\n--close-on-exit\n--\nclaude\n--name\nharden-the-hut\n/senzu-plan harden-the-hut\n"
         )
     );
 }

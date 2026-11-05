@@ -37,7 +37,7 @@ fn inside_a_worktree_prints_the_three_lines() {
         .success()
         .stdout(
             "crab-shell · execute · urgent\n\
-             next: /iam-execute crab-shell: checkpoint 3\n\
+             next: /senzu-execute crab-shell: checkpoint 3\n\
              worktree: ~/worktrees/crab-shell\n",
         );
 }

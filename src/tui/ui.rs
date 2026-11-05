@@ -619,7 +619,7 @@ mod tests {
             serde_json::from_value(serde_json::json!({
                 "schema": 1, "slug": slug, "title": format!("the {slug} title"), "phase": "plan",
                 "priority": priority, "issue": null, "thread": null, "plan": null,
-                "next": { "text": format!("/iam-plan {slug}"), "draft": "the-map" },
+                "next": { "text": format!("/senzu-plan {slug}"), "draft": "the-map" },
                 "open": [{ "text": "a blocker", "blocks": true, "draft": null }],
                 "drafts": [{ "id": "the-map", "title": "a map", "date": "2026-11-03",
                     "body": "# rocks\n- more rocks" }],
@@ -708,7 +708,7 @@ mod tests {
         key(&mut board, 'j');
         let got = text(&draw(&board, Launcher::Zellij));
         assert!(got.contains("the kelp title"), "{got}");
-        assert!(got.contains("/iam-plan kelp"), "{got}");
+        assert!(got.contains("/senzu-plan kelp"), "{got}");
         assert!(!got.contains("the crab-shell title"), "{got}");
     }
 

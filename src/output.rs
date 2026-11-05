@@ -180,13 +180,13 @@ mod tests {
 
     #[test]
     fn table_pads_slugs_into_one_column() {
-        let a = bean("crab", Priority::Urgent, "/iam-plan crab");
-        let b = bean("hermit-crab", Priority::High, "/iam-plan hermit-crab");
+        let a = bean("crab", Priority::Urgent, "/senzu-plan crab");
+        let b = bean("hermit-crab", Priority::High, "/senzu-plan hermit-crab");
         let got = ls_table(&[&a, &b], 200);
         assert_eq!(
             got,
-            "crab         urgent   plan     /iam-plan crab\n\
-             hermit-crab  high     plan     /iam-plan hermit-crab\n"
+            "crab         urgent   plan     /senzu-plan crab\n\
+             hermit-crab  high     plan     /senzu-plan hermit-crab\n"
         );
     }
 
@@ -242,7 +242,7 @@ mod tests {
 
     #[test]
     fn no_worktree_says_where_it_opens_and_skips_what_isnt_there() {
-        let b = bean("crab", Priority::Urgent, "/iam-plan crab");
+        let b = bean("crab", Priority::Urgent, "/senzu-plan crab");
         let got = show(&b, Path::new("/home/crab"), Path::new("/home/crab/senzu"));
         assert!(got.contains("worktree: none, opens in ~/senzu\n"), "{got}");
         for absent in ["issue:", "priority note:", "prd:", "page:", "open:", "null"] {
