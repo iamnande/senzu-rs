@@ -15,6 +15,7 @@ mod config;
 mod current;
 mod launch;
 mod output;
+mod tabs;
 mod telemetry;
 mod tui;
 

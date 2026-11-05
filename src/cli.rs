@@ -20,6 +20,10 @@ pub(crate) struct Cli {
     #[arg(long, global = true, env = "SENZU_LAUNCH")]
     pub(crate) launch: Option<String>,
 
+    /// the tui as a narrow list beside an agent, for the zellij tabs
+    #[arg(long)]
+    pub(crate) sidebar: bool,
+
     #[command(subcommand)]
     pub(crate) cmd: Option<Cmd>,
 }

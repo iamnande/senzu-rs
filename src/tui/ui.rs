@@ -11,6 +11,8 @@ use tui_big_text::{BigText, PixelSize};
 use crate::bean::{Bean, Phase, Priority};
 use crate::launch::Launcher;
 use crate::output::tildify;
+use crate::tabs::Live;
+use crate::tui::Layout as Shape;
 use crate::tui::app::{Board, Mode};
 use crate::tui::theme::{ACCENT, BG, FAINT, FG, GREEN, MUTED, PANEL, RAISED, RED, fg};
 
@@ -53,6 +55,7 @@ pub(crate) struct View<'a> {
     pub(crate) launcher: Launcher,
     /// where a bean with no worktree opens
     pub(crate) fallback: &'a Path,
+    pub(crate) layout: Shape,
 }
 
 /// the board and the view together, so a panel takes one argument for both
@@ -83,23 +86,29 @@ fn panel<'a>(title: &str) -> Block<'a> {
         .padding(PANEL_PADDING)
 }
 
-/// sidebar on the left, the selected stream on the right, a bar along the bottom
+/// sidebar on the left, the selected stream on the right, a bar along the bottom.
+/// the sidebar layout is the sidebar and the bar alone
 pub(crate) fn render(frame: &mut Frame, board: &Board, view: View) {
     frame.render_widget(Block::new().style(Style::new().bg(BG).fg(FG)), frame.area());
     let [main, bar] =
         Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
-    let [side, right] = Layout::horizontal([Constraint::Length(SIDEBAR), Constraint::Min(30)])
-        .spacing(SPACING)
-        .areas(main.inner(Margin::new(1, 1)));
-
     let screen = Screen { board, view };
-    sidebar(frame, screen, side);
-    match board.selected_bean() {
-        Some(bean) => detail(frame, Stream { bean, view }, right),
-        None => frame.render_widget(
-            Paragraph::new(Line::styled(empty_note(board), fg(MUTED))).block(panel("")),
-            right,
-        ),
+    match view.layout {
+        Shape::Sidebar => sidebar(frame, screen, main.inner(Margin::new(1, 1))),
+        Shape::Full => {
+            let [side, right] =
+                Layout::horizontal([Constraint::Length(SIDEBAR), Constraint::Min(30)])
+                    .spacing(SPACING)
+                    .areas(main.inner(Margin::new(1, 1)));
+            sidebar(frame, screen, side);
+            match board.selected_bean() {
+                Some(bean) => detail(frame, Stream { bean, view }, right),
+                None => frame.render_widget(
+                    Paragraph::new(Line::styled(empty_note(board), fg(MUTED))).block(panel("")),
+                    right,
+                ),
+            }
+        }
     }
     status_bar(frame, screen, bar);
 
@@ -254,16 +263,26 @@ fn list_items(board: &Board, today: Date, width: usize) -> (Vec<ListItem<'static
         }
         let days = age(b, today);
         let age_text = days.map(|d| format!("{d}d")).unwrap_or_default();
-        let room = width.saturating_sub(age_text.len() + 2);
+        let room = width.saturating_sub(age_text.len() + 3);
         let slug = fit(&b.slug, room);
-        let pad = width.saturating_sub(slug.chars().count() + age_text.len() + 1);
+        let pad = width.saturating_sub(slug.chars().count() + age_text.len() + 2);
         let stale = days.is_some_and(|d| d > STALE_DAYS) && b.phase != Phase::Done;
         items.push(ListItem::new(Line::from(vec![
-            Span::raw(format!(" {slug}{}", " ".repeat(pad))),
+            live_mark(board.live.get(&b.slug).copied()),
+            Span::raw(format!("{slug}{}", " ".repeat(pad))),
             Span::styled(age_text, fg(if stale { RED } else { FAINT })),
         ])));
     }
     (items, selected)
+}
+
+/// a tab is open: filled once the session wrote the bean, hollow until then
+fn live_mark(live: Option<Live>) -> Span<'static> {
+    match live {
+        Some(Live::Written) => Span::styled("● ", fg(GREEN)),
+        Some(Live::Quiet) => Span::styled("○ ", fg(ACCENT)),
+        None => Span::raw("  "),
+    }
 }
 
 fn detail(frame: &mut Frame, stream: Stream, area: Rect) {
@@ -455,6 +474,8 @@ fn status_bar(frame: &mut Frame, screen: Screen, area: Rect) {
     let Screen { board, view } = screen;
     frame.render_widget(Block::new().style(Style::new().bg(PANEL)), area);
     let keys: &[(&str, &str)] = match board.mode {
+        // too narrow for the full list, the popup has it
+        Mode::List if view.layout == Shape::Sidebar => &[("?", "keys")],
         Mode::List => &[
             ("enter", "open"),
             ("/", "filter"),
@@ -478,11 +499,13 @@ fn status_bar(frame: &mut Frame, screen: Screen, area: Rect) {
     let width = cells(right.iter().map(Span::width).sum());
     let [l, r] = Layout::horizontal([Constraint::Min(1), Constraint::Length(width)]).areas(area);
 
-    // a status message takes the left side, otherwise the launcher does
+    // a status message takes the left side, otherwise the launcher does. cut it
+    // short, with a cell of air, so it never runs into the keys
     let left = if let Some(msg) = &board.status {
+        let room = usize::from(l.width).saturating_sub(4);
         Line::from(vec![
             Span::styled(" ● ", fg(ACCENT)),
-            Span::styled(msg.clone(), fg(FG)),
+            Span::styled(fit(msg, room), fg(FG)),
         ])
     } else {
         let name = match view.launcher {
@@ -500,13 +523,16 @@ fn status_bar(frame: &mut Frame, screen: Screen, area: Rect) {
 
 fn keys_lines() -> Vec<Line<'static>> {
     [
+        // short enough to fit the sidebar's popup without wrapping
         ("j k", "move"),
-        ("enter", "open the agent on the next skill"),
-        ("/", "filter by slug or title"),
-        ("a", "everything, done included"),
-        ("d", "read the linked drafts"),
-        ("r", "reload from disk"),
+        ("enter", "open the agent"),
+        ("/", "filter"),
+        ("a", "show done too"),
+        ("d", "read the drafts"),
+        ("r", "reload"),
         ("q", "quit"),
+        ("●", "tab open"),
+        ("○", "tab open, unwritten"),
     ]
     .iter()
     .map(|(k, v)| {
@@ -643,6 +669,7 @@ mod tests {
             agent: "crabby",
             launcher,
             fallback: Path::new("/home/crab/senzu"),
+            layout: Shape::Full,
         }
     }
 
@@ -650,6 +677,58 @@ mod tests {
         let mut t = Term::new(TestBackend::new(W, H)).unwrap();
         t.draw(|f| render(f, board, view(launcher))).unwrap();
         t.backend().buffer().clone()
+    }
+
+    /// the sidebar layout, as narrow as a tab gives it
+    fn draw_sidebar(board: &Board) -> Buffer {
+        let mut t = Term::new(TestBackend::new(SIDEBAR, H)).unwrap();
+        let view = View {
+            layout: Shape::Sidebar,
+            ..view(Launcher::Zellij)
+        };
+        t.draw(|f| render(f, board, view)).unwrap();
+        t.backend().buffer().clone()
+    }
+
+    #[test]
+    fn the_sidebar_is_the_list_alone() {
+        let got = text(&draw_sidebar(&board()));
+        assert!(got.contains("crab-shell"), "{got}");
+        assert!(got.contains("kelp"), "{got}");
+        assert!(!got.contains("the crab-shell title"), "no detail: {got}");
+        assert!(got.contains("? keys"), "{got}");
+        assert!(!got.contains("filter"), "only the keys hint fits: {got}");
+    }
+
+    #[test]
+    fn live_tabs_are_marked_hollow_until_written() {
+        let mut board = board();
+        // select kelp, so crab-shell's marks keep their colors
+        key(&mut board, 'j');
+        board.live.insert("crab-shell".into(), Live::Quiet);
+        let buf = draw_sidebar(&board);
+        let (x, y) = in_sidebar(&buf, "○ crab-shell");
+        assert_eq!(buf[(x, y)].fg, ACCENT);
+        board.live.insert("crab-shell".into(), Live::Written);
+        let buf = draw_sidebar(&board);
+        let (x, y) = in_sidebar(&buf, "● crab-shell");
+        assert_eq!(buf[(x, y)].fg, GREEN);
+        board.live.clear();
+        let got = text(&draw_sidebar(&board));
+        assert!(
+            !got.contains("● crab-shell") && !got.contains("○ crab-shell"),
+            "{got}"
+        );
+    }
+
+    #[test]
+    fn a_long_status_stops_short_of_the_keys() {
+        let mut board = board();
+        board.status = Some("rocks ".repeat(30));
+        let got = text(&draw(&board, Launcher::Zellij));
+        let bar = got.lines().last().unwrap();
+        assert!(bar.contains("… "), "cut, with air after: {bar}");
+        assert!(bar.contains("enter open"), "{bar}");
     }
 
     fn text(buf: &Buffer) -> String {
@@ -806,7 +885,7 @@ mod tests {
         key(&mut board, '?');
         let buf = draw(&board, Launcher::Zellij);
         let got = text(&buf);
-        assert!(got.contains("open the agent on the next skill"), "{got}");
+        assert!(got.contains("tab open, unwritten"), "{got}");
         let (x, y) = find(&buf, "the crab-shell title");
         assert_eq!(buf[(x, y)].fg, FAINT);
         let (x, y) = in_sidebar(&buf, "crab-shell");
