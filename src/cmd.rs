@@ -130,7 +130,12 @@ fn run(cli: Cli, env: &Env, tty: bool) -> anyhow::Result<u8> {
         None if tty => {
             // unknown profiles are a usage mistake, caught before the screen changes
             let profile = launch::Profile::resolve(&settings.agent, &settings.launch)?;
-            tui::run(&settings.beans, env, profile)?;
+            let layout = if cli.sidebar {
+                tui::Layout::Sidebar
+            } else {
+                tui::Layout::Full
+            };
+            tui::run(&settings.beans, env, tui::Opts { profile, layout })?;
             Ok(0)
         }
         None => {

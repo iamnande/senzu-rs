@@ -1,7 +1,10 @@
+use std::collections::HashMap;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::bean::{Bean, Phase};
 use crate::output::{self, Filter};
+use crate::tabs::Live;
 
 /// what the event loop should do after a key. everything else is state
 #[derive(Debug, PartialEq, Eq)]
@@ -36,6 +39,8 @@ pub(crate) struct Board {
     pub(crate) status: Option<String>,
     /// old `.md` beans in the dir, skipped. the empty screen says so
     pub(crate) markdown: usize,
+    /// beans with a zellij tab open, by slug
+    pub(crate) live: HashMap<String, Live>,
 }
 
 impl Board {
@@ -49,6 +54,7 @@ impl Board {
             mode: Mode::List,
             status: None,
             markdown: 0,
+            live: HashMap::new(),
         };
         board.refresh(None);
         board
