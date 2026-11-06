@@ -80,7 +80,6 @@ fn event_loop(
             today: jiff::Zoned::now().date(),
             agent: ctx.opts.profile.agent.name,
             launcher: ctx.opts.profile.launcher,
-            fallback: launch::fallback_cwd(ctx.dirs.beans),
             layout: ctx.opts.layout,
         };
         terminal.draw(|frame| {

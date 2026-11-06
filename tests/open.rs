@@ -63,18 +63,17 @@ fn dry_run_is_claude_on_the_phase_skill_in_the_beans_parent() {
 }
 
 #[test]
-fn dry_run_opens_in_the_first_worktree_that_exists() {
+fn dry_run_opens_in_the_senzu_dir_even_with_a_worktree() {
     let world = World::new();
     let worktree = world.home.path().join("worktrees/crab-shell");
     std::fs::create_dir_all(&worktree).unwrap();
     let mut bean = world.fixture("crab-shell");
-    let gone = json!({ "path": "/nowhere/gone", "repo": "crab-rs", "branch": null, "base": null, "note": null });
     let here =
         json!({ "path": worktree, "repo": "crab-rs", "branch": null, "base": null, "note": null });
-    bean["repos"] = json!([gone, here]);
+    bean["repos"] = json!([here]);
     world.write("crab-shell.json", &bean);
     let got = dry_run(&mut world.senzu(), "crab-shell");
-    assert_eq!(got["cwd"], json!(worktree));
+    assert_eq!(got["cwd"], json!(world.home.path()));
 }
 
 #[test]
