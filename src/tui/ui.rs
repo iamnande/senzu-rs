@@ -53,8 +53,6 @@ pub(crate) struct View<'a> {
     /// the agent profile's name, for the enter hint
     pub(crate) agent: &'a str,
     pub(crate) launcher: Launcher,
-    /// where a bean with no worktree opens
-    pub(crate) fallback: &'a Path,
     pub(crate) layout: Shape,
 }
 
@@ -388,7 +386,7 @@ fn next_panel(frame: &mut Frame, stream: Stream, area: Rect) {
     ];
     let worktree = match bean.worktree() {
         Some(p) => tildify(p, view.home),
-        None => format!("none, opens in {}", tildify(view.fallback, view.home)),
+        None => "none".to_owned(),
     };
     lines.push(row("worktree", worktree));
     if let Some(branch) = bean.repos.first().and_then(|r| r.branch.clone()) {
@@ -668,7 +666,6 @@ mod tests {
             today: "2026-11-03".parse().unwrap(),
             agent: "crabby",
             launcher,
-            fallback: Path::new("/home/crab/senzu"),
             layout: Shape::Full,
         }
     }
@@ -837,7 +834,7 @@ mod tests {
     fn enter_says_what_it_will_do_for_the_launcher() {
         let got = text(&draw(&board(), Launcher::Zellij));
         assert!(got.contains("opens crabby in its own tab"), "{got}");
-        assert!(got.contains("none, opens in ~/senzu"), "{got}");
+        assert!(got.contains("worktree  none"), "{got}");
         assert!(got.contains("ZELLIJ"), "{got}");
         let got = text(&draw(&board(), Launcher::Exec));
         assert!(got.contains("swaps senzu for crabby"), "{got}");

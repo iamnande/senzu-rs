@@ -145,7 +145,7 @@ impl Profile {
     }
 }
 
-/// cwd is the bean's first worktree that exists, else the beans dir's parent
+/// every agent opens in the senzu dir, whatever the bean's worktrees are
 /// for zellij, a bean with a tab goes back to it, and one without gets a new
 /// tab: the sidebar on the left, the agent on the right
 pub(crate) fn plan(bean: &Bean, profile: Profile, site: Site) -> Result<Launch, LaunchError> {
@@ -154,10 +154,7 @@ pub(crate) fn plan(bean: &Bean, profile: Profile, site: Site) -> Result<Launch, 
     if bean.phase == Phase::Done {
         return Err(LaunchError::Done(slug.clone()));
     }
-    let cwd = bean
-        .worktree()
-        .unwrap_or_else(|| fallback_cwd(site.beans_dir))
-        .to_owned();
+    let cwd = senzu_dir(site.beans_dir).to_owned();
     let mut planned = Launch {
         launcher,
         existing_tab: false,
@@ -301,9 +298,9 @@ fn kdl(s: &str) -> String {
     out
 }
 
-/// where a bean with no worktree opens: the beans dir's parent, usually the
-/// repo the beans live in
-pub(crate) fn fallback_cwd(beans_dir: &Path) -> &Path {
+/// where every agent opens: the beans dir's parent, the senzu repo. other
+/// repos get worked through their worktrees from there
+pub(crate) fn senzu_dir(beans_dir: &Path) -> &Path {
     beans_dir.parent().unwrap_or(beans_dir)
 }
 
@@ -434,18 +431,13 @@ mod tests {
     }
 
     #[test]
-    fn no_worktree_falls_back_to_the_beans_parent() {
-        let b = bean("plan", Some(Path::new("/nowhere/at/all")));
-        let got = plan(&b, profile(Launcher::Exec), site(&[])).unwrap();
-        assert_eq!(got.cwd, Path::new("/s"));
-    }
-
-    #[test]
-    fn an_existing_worktree_wins() {
+    fn the_agent_opens_in_the_senzu_dir_even_with_a_worktree() {
         let dir = tempfile::tempdir().unwrap();
-        let b = bean("plan", Some(dir.path()));
-        let got = plan(&b, profile(Launcher::Exec), site(&[])).unwrap();
-        assert_eq!(got.cwd, dir.path());
+        for repo in [None, Some(dir.path())] {
+            let b = bean("plan", repo);
+            let got = plan(&b, profile(Launcher::Exec), site(&[])).unwrap();
+            assert_eq!(got.cwd, Path::new("/s"), "worktree {repo:?}");
+        }
     }
 
     #[test]

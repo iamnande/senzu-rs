@@ -112,10 +112,7 @@ fn run(cli: Cli, env: &Env, tty: bool) -> anyhow::Result<u8> {
             if json || !tty {
                 println!("{}", serde_json::to_string_pretty(&bean)?);
             } else {
-                print!(
-                    "{}",
-                    output::show(&bean, &env.home, launch::fallback_cwd(&settings.beans))
-                );
+                print!("{}", output::show(&bean, &env.home));
             }
             Ok(0)
         }
@@ -172,10 +169,7 @@ fn run(cli: Cli, env: &Env, tty: bool) -> anyhow::Result<u8> {
                 println!("no stream here");
             }
             for bean in here {
-                print!(
-                    "{}",
-                    output::brief(bean, &env.home, launch::fallback_cwd(&settings.beans))
-                );
+                print!("{}", output::brief(bean, &env.home));
             }
             Ok(0)
         }
