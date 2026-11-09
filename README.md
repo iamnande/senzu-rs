@@ -8,13 +8,17 @@ ever wondered what it'd be like if a crustacean ate senzu beans like they're cha
 cargo install --git https://github.com/iamnande/senzu-rs
 ```
 
+## beans
+
+a bean is one stream of work, a `<slug>.json` in the beans dir. `senzu check` says what the schema wants. a bean's plan sits beside it as `<slug>.plan.md`: found there, never listed in the bean, and kept out of git. `check` fails on a plan git tracks, and warns on one with no bean.
+
 ## config
 
-every setting resolves flag > env > config > default. the config is `~/.config/senzu/config.toml` (or under `$XDG_CONFIG_HOME`), and every key is optional.
+every setting resolves flag > env > config > default. the config is `~/.config/senzu/config.toml` (or under `$XDG_CONFIG_HOME`), and every key is optional. `senzu config` shows each value and the layer that set it.
 
 | setting | flag | env | config | default |
 |---|---|---|---|---|
-| beans dir | `--beans` | `SENZU_BEANS` | `beans` | none, senzu asks for one |
+| beans dir | `--beans` | `SENZU_BEANS` | `beans` | none: every command but `config` stops until one is set |
 | agent | `--agent` | `SENZU_AGENT` | `agent` | `claude` |
 | launch | `--launch` | `SENZU_LAUNCH` | `launch` | `zellij` inside zellij, else `exec` |
 | state dir | `--state` | `SENZU_STATE` | none, the log starts before the config | `$XDG_STATE_HOME/senzu`, else `~/.local/state/senzu` |
@@ -33,7 +37,40 @@ senzu ls [--all]      open streams, urgent and high first
 senzu show <slug>     one bean
 senzu open <slug>     launch the agent in the bean's worktree
 senzu check           validate every bean
+senzu config          each setting and where it came from
 ```
+
+piped, or with `--json`, `ls`, `show` and `config` print json. paths come out plain and absolute, so they paste straight into a command.
+
+`senzu show <slug> --json`:
+
+```json
+{
+  "bean": {},
+  "path": "/home/crab/beans/crab.json",
+  "attachments": [
+    { "kind": "plan", "path": "/home/crab/beans/crab.plan.md" },
+    { "kind": "issue", "url": "https://example.com/issues/1" }
+  ]
+}
+```
+
+kinds are `plan`, `artifact`, `issue` and `link`. anything that starts with `scheme://` has `url`, the rest is a local file with `path` (so `mailto:` is a path).
+
+`senzu config --json`, one row per setting, unset is `null`:
+
+```json
+[
+  { "key": "beans", "value": "/home/crab/beans", "from": "env:SENZU_BEANS" },
+  { "key": "agent", "value": "claude", "from": "default:" }
+]
+```
+
+`from` is the layer: `flag:--beans`, `env:SENZU_BEANS`, `file:///home/crab/.config/senzu/config.toml` or `default:`.
+
+## exit codes
+
+`0` ok, `1` something failed (like `check` finding a problem), `2` a usage or config mistake, `3` no bean by that slug.
 
 ## license
 
