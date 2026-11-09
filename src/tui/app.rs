@@ -245,8 +245,8 @@ mod tests {
 
     fn bean([slug, title, priority, phase]: [&str; 4]) -> Bean {
         serde_json::from_value(serde_json::json!({
-            "schema": 1, "slug": slug, "title": title, "phase": phase, "priority": priority,
-            "issue": null, "thread": null, "plan": null,
+            "schema": 2, "slug": slug, "title": title, "phase": phase, "priority": priority,
+            "issue": null, "thread": null,
             "next": { "text": format!("/senzu-{phase} {slug}"), "draft": null },
         }))
         .unwrap()

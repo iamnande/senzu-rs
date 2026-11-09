@@ -194,11 +194,53 @@ fn rejects_a_bean_with_no_schema() {
 #[test]
 fn rejects_a_newer_schema_and_says_to_upgrade() {
     let mut bean = World::new().fixture("harden-the-hut");
-    bean["schema"] = json!(2);
-    bean["phase"] = json!({ "renamed": "in schema 2" });
+    bean["schema"] = json!(3);
+    bean["phase"] = json!({ "renamed": "in schema 3" });
     rejects(
         "harden-the-hut.json",
         &bean,
-        "schema 2, this senzu reads 1, upgrade senzu",
+        "schema 3, this senzu reads 2, upgrade senzu",
+    );
+}
+
+/// a schema 1 bean still carries `plan`, so it's refused with a pointer
+#[test]
+fn rejects_a_schema_1_bean_and_says_to_migrate() {
+    let mut bean = World::new().fixture("harden-the-hut");
+    bean["schema"] = json!(1);
+    bean["plan"] = json!({ "prd": "/nowhere/prd.md" });
+    rejects(
+        "harden-the-hut.json",
+        &bean,
+        "schema 1, this senzu reads 2, the bean needs migrating",
+    );
+}
+
+#[test]
+fn rejects_a_stored_plan_attachment() {
+    let mut bean = World::new().fixture("harden-the-hut");
+    bean["attachments"] = json!([{ "kind": "plan", "uri": "harden-the-hut.plan.md" }]);
+    rejects(
+        "harden-the-hut.json",
+        &bean,
+        "plans are found beside the bean",
+    );
+}
+
+#[test]
+fn rejects_an_attachment_kind_it_doesnt_know() {
+    let mut bean = World::new().fixture("harden-the-hut");
+    bean["attachments"] = json!([{ "kind": "artefact", "uri": "https://example.com" }]);
+    rejects("harden-the-hut.json", &bean, "unknown variant `artefact`");
+}
+
+#[test]
+fn rejects_an_attachment_uri_that_isnt_one() {
+    let mut bean = World::new().fixture("harden-the-hut");
+    bean["attachments"] = json!([{ "kind": "link", "uri": "https://" }]);
+    rejects(
+        "harden-the-hut.json",
+        &bean,
+        "attachment uri \"https://\" isn't a uri",
     );
 }

@@ -112,15 +112,8 @@ pub(crate) fn show(bean: &Bean, home: &Path) -> String {
     for pr in &bean.prs {
         let _ = writeln!(out, "pr: {pr}");
     }
-    if let Some(plan) = &bean.plan {
-        for (label, path) in [("prd", &plan.prd), ("spec", &plan.spec)] {
-            if let Some(path) = path {
-                let _ = writeln!(out, "{label}: {}", tildify(path, home));
-            }
-        }
-        if let Some(page) = &plan.page {
-            let _ = writeln!(out, "page: {page}");
-        }
+    for a in &bean.attachments {
+        let _ = writeln!(out, "{}: {}", a.kind, a.uri);
     }
     if !bean.open.is_empty() {
         out.push_str("open:\n");
@@ -171,8 +164,8 @@ mod tests {
 
     fn bean(slug: &str, priority: Priority, next: &str) -> Bean {
         serde_json::from_value(serde_json::json!({
-            "schema": 1, "slug": slug, "title": "t", "phase": "plan", "priority": priority,
-            "issue": null, "thread": null, "plan": null,
+            "schema": 2, "slug": slug, "title": "t", "phase": "plan", "priority": priority,
+            "issue": null, "thread": null,
             "next": { "text": next, "draft": null },
         }))
         .unwrap()
@@ -245,7 +238,7 @@ mod tests {
         let b = bean("crab", Priority::Urgent, "/senzu-plan crab");
         let got = show(&b, Path::new("/home/crab"));
         assert!(got.contains("worktree: none\n"), "{got}");
-        for absent in ["issue:", "priority note:", "prd:", "page:", "open:", "null"] {
+        for absent in ["issue:", "priority note:", "artifact:", "open:", "null"] {
             assert!(!got.contains(absent), "{absent} in {got}");
         }
     }

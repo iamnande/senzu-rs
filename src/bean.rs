@@ -16,9 +16,10 @@ use std::path::{Path, PathBuf};
 
 use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 /// the schema this senzu reads. a bean with any other one is refused
-pub const SCHEMA: u32 = 1;
+pub const SCHEMA: u32 = 2;
 
 /// a bean's plan sits beside it as `<slug>.plan.md`
 pub const PLAN_SUFFIX: &str = ".plan.md";
@@ -45,8 +46,9 @@ pub struct Bean {
     /// the repos it touches. the first one that exists is where the agent opens
     #[serde(default)]
     pub repos: Vec<Repo>,
-    /// where the prd, spec and review page are
-    pub plan: Option<Plan>,
+    /// what hangs off it. the plan isn't stored here, it's found beside the bean
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
     /// pull request urls
     #[serde(default)]
     pub prs: Vec<String>,
@@ -139,17 +141,39 @@ pub struct Repo {
     pub note: Option<String>,
 }
 
-/// where the plan docs are
+/// something hung off a bean: an artifact, an issue, a link
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Plan {
-    /// path to the prd
-    pub prd: Option<PathBuf>,
-    /// path to the tech spec
-    pub spec: Option<PathBuf>,
-    /// a rendered review page
-    pub page: Option<String>,
-    /// anything else worth knowing about it
-    pub note: Option<String>,
+pub struct Attachment {
+    /// what it is, so a reader knows how to show it
+    pub kind: Kind,
+    /// where it is. absolute, or relative to the bean's own file
+    pub uri: String,
+}
+
+/// what an attachment is. closed, so a typo fails `check`
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Kind {
+    /// the `<slug>.plan.md` beside the bean. found, never stored
+    Plan,
+    /// a claude.ai artifact
+    Artifact,
+    /// a tracker issue
+    Issue,
+    /// any other url
+    Link,
+}
+
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            Self::Plan => "plan",
+            Self::Artifact => "artifact",
+            Self::Issue => "issue",
+            Self::Link => "link",
+        };
+        f.write_str(name)
+    }
 }
 
 /// something that happened
@@ -256,6 +280,17 @@ impl Bean {
                 out.push(format!("repo path {} isn't absolute", repo.path.display()));
             }
         }
+        for a in &self.attachments {
+            if a.kind == Kind::Plan {
+                out.push(format!(
+                    "attachment {:?} is a plan: plans are found beside the bean as {}{PLAN_SUFFIX}, not stored",
+                    a.uri, self.slug
+                ));
+            }
+            if !is_uri_ref(&a.uri) {
+                out.push(format!("attachment uri {:?} isn't a uri", a.uri));
+            }
+        }
         let mut ids = HashSet::new();
         for draft in &self.drafts {
             if !is_slug(&draft.id) {
@@ -276,6 +311,17 @@ impl Bean {
             }
         }
         out
+    }
+}
+
+/// an absolute uri, or a reference that resolves against one
+fn is_uri_ref(s: &str) -> bool {
+    match Url::parse(s) {
+        Ok(_) => true,
+        Err(url::ParseError::RelativeUrlWithoutBase) => {
+            !s.is_empty() && Url::parse("file:///").and_then(|base| base.join(s)).is_ok()
+        }
+        Err(_) => false,
     }
 }
 
