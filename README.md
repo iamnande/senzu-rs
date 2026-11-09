@@ -22,9 +22,16 @@ every setting resolves flag > env > config > default. the config is `~/.config/s
 | agent | `--agent` | `SENZU_AGENT` | `agent` | `claude` |
 | launch | `--launch` | `SENZU_LAUNCH` | `launch` | `zellij` inside zellij, else `exec` |
 | state dir | `--state` | `SENZU_STATE` | none, the log starts before the config | `$XDG_STATE_HOME/senzu`, else `~/.local/state/senzu` |
+| worktrees | `--worktrees` | `SENZU_WORKTREES` | `worktrees` | `~/worktrees` |
+| branch prefix | `--branch-prefix` | `SENZU_BRANCH_PREFIX` | `branch_prefix` | none, no prefix |
+| thread channel | `--thread-channel` | `SENZU_THREAD_CHANNEL` | `thread_channel` | none, no slack |
+
+senzu itself reads the first four. the last three are for the skills, which ask `senzu config --json` instead of hardcoding them. an empty value counts as unset.
 
 ```toml
 beans = "~/path/to/beans"
+worktrees = "~/worktrees"
+branch_prefix = "crab/"
 ```
 
 logs go to the state dir, a file a day, a week kept. `RUST_LOG` sets the level.
@@ -62,7 +69,7 @@ kinds are `plan`, `artifact`, `issue` and `link`. anything that starts with `sch
 ```json
 [
   { "key": "beans", "value": "/home/crab/beans", "from": "env:SENZU_BEANS" },
-  { "key": "agent", "value": "claude", "from": "default:" }
+  { "key": "thread_channel", "value": null, "from": "default:" }
 ]
 ```
 

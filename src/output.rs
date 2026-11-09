@@ -162,12 +162,27 @@ enum Value<'a> {
     Text(Option<&'a str>),
 }
 
-fn settings_list(s: &Settings) -> [(&'static str, Value<'_>, &config::Origin); 4] {
+fn settings_list(s: &Settings) -> [(&'static str, Value<'_>, &config::Origin); 7] {
     [
         ("beans", Value::Dir(s.beans.as_deref()), &s.from.beans),
         ("agent", Value::Text(Some(&s.agent)), &s.from.agent),
         ("launch", Value::Text(Some(&s.launch)), &s.from.launch),
         ("state", Value::Dir(Some(&s.state)), &s.from.state),
+        (
+            "worktrees",
+            Value::Dir(Some(&s.worktrees)),
+            &s.from.worktrees,
+        ),
+        (
+            "branch_prefix",
+            Value::Text(s.branch_prefix.as_deref()),
+            &s.from.branch_prefix,
+        ),
+        (
+            "thread_channel",
+            Value::Text(s.thread_channel.as_deref()),
+            &s.from.thread_channel,
+        ),
     ]
 }
 
@@ -252,19 +267,28 @@ mod tests {
             agent: "claude".into(),
             launch: "exec".into(),
             state: "/var/senzu".into(),
+            worktrees: "/home/crab/wt".into(),
+            branch_prefix: Some("crab/".into()),
+            thread_channel: None,
             from: Origins {
                 beans: Origin::Env("SENZU_BEANS".into()),
                 agent: Origin::Default,
                 launch: Origin::Flag("--launch".into()),
                 state: Origin::Default,
+                worktrees: Origin::Default,
+                branch_prefix: Origin::Default,
+                thread_channel: Origin::Default,
             },
         };
         assert_eq!(
             settings_table(&s, Path::new("/home/crab")),
-            "beans   ~/beans     env:SENZU_BEANS\n\
-             agent   claude      default:\n\
-             launch  exec        flag:--launch\n\
-             state   /var/senzu  default:\n"
+            "beans           ~/beans     env:SENZU_BEANS\n\
+             agent           claude      default:\n\
+             launch          exec        flag:--launch\n\
+             state           /var/senzu  default:\n\
+             worktrees       ~/wt        default:\n\
+             branch_prefix   crab/       default:\n\
+             thread_channel  -           default:\n"
         );
     }
 
