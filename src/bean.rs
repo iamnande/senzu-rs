@@ -20,6 +20,9 @@ use serde::{Deserialize, Serialize};
 /// the schema this senzu reads. a bean with any other one is refused
 pub const SCHEMA: u32 = 1;
 
+/// a bean's plan sits beside it as `<slug>.plan.md`
+pub const PLAN_SUFFIX: &str = ".plan.md";
+
 /// one stream of work, one `<slug>.json` in the beans dir
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bean {
