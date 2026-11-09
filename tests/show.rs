@@ -7,7 +7,7 @@
 mod common;
 
 use predicates::prelude::*;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use common::World;
 
@@ -22,6 +22,53 @@ fn unknown_slug_exits_3() {
         .stderr(predicate::str::contains("no-such-crab"));
 }
 
+fn show_json(world: &World, slug: &str) -> Value {
+    let out = world
+        .senzu()
+        .args(["show", slug, "--json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{out:?}");
+    serde_json::from_slice(&out.stdout).unwrap()
+}
+
+/// a plain path, so a skill can paste it: no `file://`, no `%20`
+fn path(world: &World, name: &str) -> String {
+    world.beans().join(name).display().to_string()
+}
+
+#[test]
+fn json_says_where_the_bean_is_and_resolves_its_refs() {
+    let world = World::new();
+    let got = show_json(&world, "crab-shell");
+    assert_eq!(got["path"], path(&world, "crab-shell.json"));
+    assert_eq!(
+        got["attachments"],
+        json!([
+            { "kind": "artifact", "url": "https://example.com/artifact/crab-shell" },
+            { "kind": "link", "path": path(&world, "notes/crab-shell.md") },
+        ])
+    );
+}
+
+#[test]
+fn a_plan_beside_the_bean_leads_the_attachments() {
+    let world = World::new();
+    std::fs::write(world.beans().join("crab-shell.plan.md"), "# crab-shell\n").unwrap();
+    let got = show_json(&world, "crab-shell");
+    assert_eq!(
+        got["attachments"][0],
+        json!({ "kind": "plan", "path": path(&world, "crab-shell.plan.md") })
+    );
+}
+
+#[test]
+fn no_plan_file_means_no_plan_attachment() {
+    let world = World::new();
+    let got = show_json(&world, "kelp-budget");
+    assert_eq!(got["attachments"], json!([]));
+}
+
 /// crab-shell sets every field, so a lossless round trip gives back the file
 #[test]
 fn json_round_trips_the_whole_bean() {
@@ -33,7 +80,7 @@ fn json_round_trips_the_whole_bean() {
         .unwrap();
     assert!(out.status.success(), "{out:?}");
     let got: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(got, world.fixture("crab-shell"));
+    assert_eq!(got["bean"], world.fixture("crab-shell"));
 }
 
 #[test]
@@ -45,7 +92,7 @@ fn piped_show_is_json_without_asking() {
         .output()
         .unwrap();
     let got: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(got["slug"], "kelp-budget");
+    assert_eq!(got["bean"]["slug"], "kelp-budget");
 }
 
 /// show reads only its own file, so a broken neighbor stays quiet
