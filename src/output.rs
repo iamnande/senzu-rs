@@ -4,7 +4,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::bean::{Bean, Phase, Priority};
-use crate::config::Settings;
+use crate::config::{self, Settings};
 use crate::load::Envelope;
 
 /// what `ls` keeps: the filters the flags asked for
@@ -144,50 +144,69 @@ fn worktree_label(bean: &Bean, home: &Path) -> String {
     }
 }
 
-/// one setting, for `senzu config --json`
+/// one setting, for `senzu config --json`. an unset one has a `null` value
 #[derive(Debug, Serialize)]
 pub(crate) struct SettingRow {
     key: &'static str,
-    value: String,
+    value: Option<String>,
     from: String,
+}
+
+/// a setting's value: a path is shown per output, anything else as is
+enum Value<'a> {
+    Dir(&'a Path),
+    Text(Option<&'a str>),
+}
+
+fn settings_list(s: &Settings) -> [(&'static str, Value<'_>, &config::Origin); 7] {
+    [
+        ("beans", Value::Dir(&s.beans), &s.from.beans),
+        ("agent", Value::Text(Some(&s.agent)), &s.from.agent),
+        ("launch", Value::Text(Some(&s.launch)), &s.from.launch),
+        ("state", Value::Dir(&s.state), &s.from.state),
+        ("worktrees", Value::Dir(&s.worktrees), &s.from.worktrees),
+        (
+            "branch_prefix",
+            Value::Text(s.branch_prefix.as_deref()),
+            &s.from.branch_prefix,
+        ),
+        (
+            "thread_channel",
+            Value::Text(s.thread_channel.as_deref()),
+            &s.from.thread_channel,
+        ),
+    ]
 }
 
 /// the settings with their layers. paths go out as plain absolute paths, so a
 /// skill can paste one into a command
 pub(crate) fn setting_rows(s: &Settings) -> Vec<SettingRow> {
-    let dir = |p: &Path| p.display().to_string();
-    vec![
-        SettingRow {
-            key: "beans",
-            value: dir(&s.beans),
-            from: s.from.beans.uri(),
-        },
-        SettingRow {
-            key: "agent",
-            value: s.agent.clone(),
-            from: s.from.agent.uri(),
-        },
-        SettingRow {
-            key: "launch",
-            value: s.launch.clone(),
-            from: s.from.launch.uri(),
-        },
-        SettingRow {
-            key: "state",
-            value: dir(&s.state),
-            from: s.from.state.uri(),
-        },
-    ]
+    settings_list(s)
+        .into_iter()
+        .map(|(key, value, from)| SettingRow {
+            key,
+            value: match value {
+                Value::Dir(p) => Some(p.display().to_string()),
+                Value::Text(t) => t.map(str::to_owned),
+            },
+            from: from.uri(),
+        })
+        .collect()
 }
 
-/// `key  value  from`, in columns, paths as tilde paths
+/// `key  value  from`, in columns, paths as tilde paths, unset as `-`
 pub(crate) fn settings_table(s: &Settings, home: &Path) -> String {
-    let rows = [
-        ("beans", tildify(&s.beans, home), &s.from.beans),
-        ("agent", s.agent.clone(), &s.from.agent),
-        ("launch", s.launch.clone(), &s.from.launch),
-        ("state", tildify(&s.state, home), &s.from.state),
-    ];
+    let rows: Vec<_> = settings_list(s)
+        .into_iter()
+        .map(|(key, value, from)| {
+            let value = match value {
+                Value::Dir(p) => tildify(p, home),
+                Value::Text(t) => t.unwrap_or("-").to_owned(),
+            };
+            (key, value, from.uri())
+        })
+        .collect();
+    let key_w = rows.iter().map(|(k, _, _)| k.len()).max().unwrap_or(0);
     let value_w = rows
         .iter()
         .map(|(_, v, _)| v.chars().count())
@@ -195,7 +214,7 @@ pub(crate) fn settings_table(s: &Settings, home: &Path) -> String {
         .unwrap_or(0);
     let mut out = String::new();
     for (key, value, from) in rows {
-        let _ = writeln!(out, "{key:6}  {value:value_w$}  {}", from.uri());
+        let _ = writeln!(out, "{key:key_w$}  {value:value_w$}  {from}");
     }
     out
 }
@@ -249,19 +268,28 @@ mod tests {
             agent: "claude".into(),
             launch: "exec".into(),
             state: "/var/senzu".into(),
+            worktrees: "/home/crab/wt".into(),
+            branch_prefix: Some("crab/".into()),
+            thread_channel: None,
             from: Origins {
                 beans: Origin::Env("SENZU_BEANS".into()),
                 agent: Origin::Default,
                 launch: Origin::Flag("--launch".into()),
                 state: Origin::Default,
+                worktrees: Origin::Default,
+                branch_prefix: Origin::Default,
+                thread_channel: Origin::Default,
             },
         };
         assert_eq!(
             settings_table(&s, Path::new("/home/crab")),
-            "beans   ~/beans     env:SENZU_BEANS\n\
-             agent   claude      default:\n\
-             launch  exec        flag:--launch\n\
-             state   /var/senzu  default:\n"
+            "beans           ~/beans     env:SENZU_BEANS\n\
+             agent           claude      default:\n\
+             launch          exec        flag:--launch\n\
+             state           /var/senzu  default:\n\
+             worktrees       ~/wt        default:\n\
+             branch_prefix   crab/       default:\n\
+             thread_channel  -           default:\n"
         );
     }
 

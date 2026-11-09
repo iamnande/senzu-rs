@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 const DEFAULT_AGENT: &str = "claude";
+const DEFAULT_WORKTREES: &str = "~/worktrees";
 
 /// ~/.config/senzu/config.toml, every key optional
 #[derive(Debug, Default, Deserialize)]
@@ -13,6 +14,9 @@ pub(crate) struct Config {
     pub(crate) beans: Option<PathBuf>,
     pub(crate) agent: Option<String>,
     pub(crate) launch: Option<String>,
+    pub(crate) worktrees: Option<PathBuf>,
+    pub(crate) branch_prefix: Option<String>,
+    pub(crate) thread_channel: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -59,6 +63,9 @@ pub(crate) struct Overrides {
     pub(crate) agent: Option<(String, Origin)>,
     pub(crate) launch: Option<(String, Origin)>,
     pub(crate) state: Option<(PathBuf, Origin)>,
+    pub(crate) worktrees: Option<(PathBuf, Origin)>,
+    pub(crate) branch_prefix: Option<(String, Origin)>,
+    pub(crate) thread_channel: Option<(String, Origin)>,
 }
 
 /// the layer a setting came from. shown as a uri whose scheme is the layer
@@ -94,6 +101,9 @@ pub(crate) struct Origins {
     pub(crate) agent: Origin,
     pub(crate) launch: Origin,
     pub(crate) state: Origin,
+    pub(crate) worktrees: Origin,
+    pub(crate) branch_prefix: Origin,
+    pub(crate) thread_channel: Origin,
 }
 
 /// the process environment senzu uses, read once so tests can hand in their own
@@ -151,6 +161,12 @@ pub(crate) struct Settings {
     pub(crate) launch: String,
     /// the logs and the tab markers
     pub(crate) state: PathBuf,
+    /// for the skills: where worktrees go
+    pub(crate) worktrees: PathBuf,
+    /// for the skills: how branch names start. none, no prefix
+    pub(crate) branch_prefix: Option<String>,
+    /// for the skills: the slack channel for threads. none, no slack
+    pub(crate) thread_channel: Option<String>,
     /// which layer set each one
     pub(crate) from: Origins,
 }
@@ -182,18 +198,43 @@ pub(crate) fn resolve(over: Overrides, config: Config, env: &Env) -> Result<Sett
         .state
         .unwrap_or_else(|| (env.state_dir(), Origin::Default));
     let state = std::path::absolute(&state).unwrap_or(state);
+    let (worktrees, worktrees_from) = over
+        .worktrees
+        .or_else(|| config.worktrees.map(|p| (p, file())))
+        .unwrap_or_else(|| (DEFAULT_WORKTREES.into(), Origin::Default));
+    let worktrees = expand_tilde(worktrees, &env.home);
+    let (branch_prefix, branch_prefix_from) = optional(
+        over.branch_prefix,
+        config.branch_prefix.map(|p| (p, file())),
+    );
+    let (thread_channel, thread_channel_from) = optional(
+        over.thread_channel,
+        config.thread_channel.map(|c| (c, file())),
+    );
     Ok(Settings {
         beans,
         agent,
         launch,
         state,
+        worktrees,
+        branch_prefix,
+        thread_channel,
         from: Origins {
             beans: beans_from,
             agent: agent_from,
             launch: launch_from,
             state: state_from,
+            worktrees: worktrees_from,
+            branch_prefix: branch_prefix_from,
+            thread_channel: thread_channel_from,
         },
     })
+}
+
+/// a setting with no default: unset is `None`, from the default layer
+fn optional<T>(over: Option<(T, Origin)>, config: Option<(T, Origin)>) -> (Option<T>, Origin) {
+    over.or(config)
+        .map_or((None, Origin::Default), |(v, from)| (Some(v), from))
 }
 
 /// toml has no shell, so `~/beans` in the config means home
@@ -229,6 +270,7 @@ mod tests {
             beans: Some(PathBuf::from("/from/config")),
             agent: Some(agent.into()),
             launch: Some(launch.into()),
+            ..Config::default()
         }
     }
 
@@ -239,6 +281,7 @@ mod tests {
             agent: Some(("flag-agent".into(), Origin::Env("SENZU_AGENT".into()))),
             launch: Some(flag("exec", "--launch")),
             state: Some(flag("/from/flag/state", "--state")),
+            ..Overrides::default()
         };
         let got = resolve(over, config("config-agent", "zellij"), &env(false)).unwrap();
         assert_eq!(
@@ -248,11 +291,17 @@ mod tests {
                 agent: "flag-agent".into(),
                 launch: "exec".into(),
                 state: "/from/flag/state".into(),
+                worktrees: "/home/crab/worktrees".into(),
+                branch_prefix: None,
+                thread_channel: None,
                 from: Origins {
                     beans: Origin::Flag("--beans".into()),
                     agent: Origin::Env("SENZU_AGENT".into()),
                     launch: Origin::Flag("--launch".into()),
                     state: Origin::Flag("--state".into()),
+                    worktrees: Origin::Default,
+                    branch_prefix: Origin::Default,
+                    thread_channel: Origin::Default,
                 },
             }
         );
@@ -273,11 +322,17 @@ mod tests {
                 agent: "config-agent".into(),
                 launch: "exec".into(),
                 state: "/home/crab/.local/state/senzu".into(),
+                worktrees: "/home/crab/worktrees".into(),
+                branch_prefix: None,
+                thread_channel: None,
                 from: Origins {
                     beans: file(),
                     agent: file(),
                     launch: file(),
                     state: Origin::Default,
+                    worktrees: Origin::Default,
+                    branch_prefix: Origin::Default,
+                    thread_channel: Origin::Default,
                 },
             }
         );
@@ -301,11 +356,17 @@ mod tests {
                 agent: "claude".into(),
                 launch: "exec".into(),
                 state: "/home/crab/.local/state/senzu".into(),
+                worktrees: "/home/crab/worktrees".into(),
+                branch_prefix: None,
+                thread_channel: None,
                 from: Origins {
                     beans: Origin::Flag("--beans".into()),
                     agent: Origin::Default,
                     launch: Origin::Default,
                     state: Origin::Default,
+                    worktrees: Origin::Default,
+                    branch_prefix: Origin::Default,
+                    thread_channel: Origin::Default,
                 },
             }
         );

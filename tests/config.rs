@@ -47,3 +47,39 @@ fn a_config_file_names_itself() {
         json!({ "key": "launch", "value": "exec", "from": file })
     );
 }
+
+#[test]
+fn the_skill_keys_come_from_the_config_file() {
+    let world = World::new();
+    let dir = world.home.path().join(".config/senzu");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("config.toml"),
+        "worktrees = \"~/w t\"\nbranch_prefix = \"crab/\"\nthread_channel = \"#tidepool\"\n",
+    )
+    .unwrap();
+    let got = config_json(&mut world.senzu());
+    let file = Url::from_file_path(dir.join("config.toml"))
+        .unwrap()
+        .to_string();
+    // a plain path, not a uri: no `file://`, no `%20`, no trailing slash
+    let wt = world.home.path().join("w t").display().to_string();
+    assert_eq!(
+        got[4..],
+        [
+            json!({ "key": "worktrees", "value": wt, "from": file }),
+            json!({ "key": "branch_prefix", "value": "crab/", "from": file }),
+            json!({ "key": "thread_channel", "value": "#tidepool", "from": file }),
+        ]
+    );
+}
+
+#[test]
+fn an_unset_skill_key_is_null() {
+    let world = World::new();
+    let got = config_json(&mut world.senzu());
+    assert_eq!(
+        got[6],
+        json!({ "key": "thread_channel", "value": null, "from": "default:" })
+    );
+}

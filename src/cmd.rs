@@ -98,6 +98,9 @@ fn overrides(cli: &mut Cli, matches: &ArgMatches) -> Overrides {
         agent: layered(cli.agent.take(), matches, "agent"),
         launch: layered(cli.launch.take(), matches, "launch"),
         state: layered(cli.state.take(), matches, "state"),
+        worktrees: layered(cli.worktrees.take(), matches, "worktrees"),
+        branch_prefix: layered(cli.branch_prefix.take(), matches, "branch_prefix"),
+        thread_channel: layered(cli.thread_channel.take(), matches, "thread_channel"),
     }
 }
 

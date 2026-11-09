@@ -24,6 +24,18 @@ pub(crate) struct Cli {
     #[arg(long, global = true, env = "SENZU_STATE")]
     pub(crate) state: Option<PathBuf>,
 
+    /// where the skills put a stream's worktrees
+    #[arg(long, global = true, env = "SENZU_WORKTREES")]
+    pub(crate) worktrees: Option<PathBuf>,
+
+    /// what the skills start a branch name with, like `crab/`
+    #[arg(long, global = true, env = "SENZU_BRANCH_PREFIX")]
+    pub(crate) branch_prefix: Option<String>,
+
+    /// the slack channel a stream's thread lives in. unset, the skills skip slack
+    #[arg(long, global = true, env = "SENZU_THREAD_CHANNEL")]
+    pub(crate) thread_channel: Option<String>,
+
     /// the tui as a narrow list beside an agent, for the zellij tabs
     #[arg(long)]
     pub(crate) sidebar: bool,
