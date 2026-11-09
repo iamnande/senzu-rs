@@ -4,6 +4,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::bean::{Bean, Phase, Priority};
+use crate::config::{self, Settings};
 use crate::load::{At, Envelope};
 
 /// what `ls` keeps: the filters the flags asked for
@@ -147,6 +148,70 @@ fn worktree_label(bean: &Bean, home: &Path) -> String {
     }
 }
 
+/// one setting, for `senzu config --json`. an unset one has a `null` value
+#[derive(Debug, Serialize)]
+pub(crate) struct SettingRow {
+    key: &'static str,
+    value: Option<String>,
+    from: String,
+}
+
+/// a setting's value: a path is shown per output, anything else as is
+enum Value<'a> {
+    Dir(Option<&'a Path>),
+    Text(Option<&'a str>),
+}
+
+fn settings_list(s: &Settings) -> [(&'static str, Value<'_>, &config::Origin); 4] {
+    [
+        ("beans", Value::Dir(s.beans.as_deref()), &s.from.beans),
+        ("agent", Value::Text(Some(&s.agent)), &s.from.agent),
+        ("launch", Value::Text(Some(&s.launch)), &s.from.launch),
+        ("state", Value::Dir(Some(&s.state)), &s.from.state),
+    ]
+}
+
+/// the settings with their layers. paths go out as plain absolute paths, so a
+/// skill can paste one into a command
+pub(crate) fn setting_rows(s: &Settings) -> Vec<SettingRow> {
+    settings_list(s)
+        .into_iter()
+        .map(|(key, value, from)| SettingRow {
+            key,
+            value: match value {
+                Value::Dir(p) => p.map(|p| p.display().to_string()),
+                Value::Text(t) => t.map(str::to_owned),
+            },
+            from: from.uri(),
+        })
+        .collect()
+}
+
+/// `key  value  from`, in columns, paths as tilde paths, unset as `-`
+pub(crate) fn settings_table(s: &Settings, home: &Path) -> String {
+    let rows: Vec<_> = settings_list(s)
+        .into_iter()
+        .map(|(key, value, from)| {
+            let value = match value {
+                Value::Dir(p) => p.map_or_else(|| "-".to_owned(), |p| tildify(p, home)),
+                Value::Text(t) => t.unwrap_or("-").to_owned(),
+            };
+            (key, value, from.uri())
+        })
+        .collect();
+    let key_w = rows.iter().map(|(k, _, _)| k.len()).max().unwrap_or(0);
+    let value_w = rows
+        .iter()
+        .map(|(_, v, _)| v.chars().count())
+        .max()
+        .unwrap_or(0);
+    let mut out = String::new();
+    for (key, value, from) in rows {
+        let _ = writeln!(out, "{key:key_w$}  {value:value_w$}  {from}");
+    }
+    out
+}
+
 /// `/home/crab/x` → `~/x`
 pub(crate) fn tildify(path: &Path, home: &Path) -> String {
     match path.strip_prefix(home) {
@@ -177,6 +242,30 @@ mod tests {
             path: format!("/home/crab/beans/{}.json", bean.slug).into(),
             attachments,
         }
+    }
+
+    #[test]
+    fn settings_table_lines_up_and_tildes_paths() {
+        use crate::config::{Origin, Origins};
+        let s = Settings {
+            beans: Some("/home/crab/beans".into()),
+            agent: "claude".into(),
+            launch: "exec".into(),
+            state: "/var/senzu".into(),
+            from: Origins {
+                beans: Origin::Env("SENZU_BEANS".into()),
+                agent: Origin::Default,
+                launch: Origin::Flag("--launch".into()),
+                state: Origin::Default,
+            },
+        };
+        assert_eq!(
+            settings_table(&s, Path::new("/home/crab")),
+            "beans   ~/beans     env:SENZU_BEANS\n\
+             agent   claude      default:\n\
+             launch  exec        flag:--launch\n\
+             state   /var/senzu  default:\n"
+        );
     }
 
     #[test]

@@ -70,4 +70,10 @@ pub(crate) enum Cmd {
     },
     /// validate every bean
     Check,
+    /// each setting, its value, and the layer that set it
+    Config {
+        /// json, even on a tty
+        #[arg(long)]
+        json: bool,
+    },
 }

@@ -51,13 +51,48 @@ impl Config {
     }
 }
 
-/// what the flags and env already settled, before config and defaults
+/// what the flags and env already settled, before config and defaults,
+/// each with the layer that set it
 #[derive(Debug, Default)]
 pub(crate) struct Overrides {
-    pub(crate) beans: Option<PathBuf>,
-    pub(crate) agent: Option<String>,
-    pub(crate) launch: Option<String>,
-    pub(crate) state: Option<PathBuf>,
+    pub(crate) beans: Option<(PathBuf, Origin)>,
+    pub(crate) agent: Option<(String, Origin)>,
+    pub(crate) launch: Option<(String, Origin)>,
+    pub(crate) state: Option<(PathBuf, Origin)>,
+}
+
+/// the layer a setting came from. shown as a uri whose scheme is the layer
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Origin {
+    /// `--beans`
+    Flag(String),
+    /// `SENZU_BEANS`
+    Env(String),
+    /// the config file
+    Config(PathBuf),
+    /// nothing set it
+    Default,
+}
+
+impl Origin {
+    /// `flag:--beans`, `env:SENZU_BEANS`, `file:///…/config.toml`, `default:`
+    pub(crate) fn uri(&self) -> String {
+        match self {
+            Self::Flag(name) => format!("flag:{name}"),
+            Self::Env(var) => format!("env:{var}"),
+            Self::Config(path) => format!("file://{}", path.display()),
+            Self::Default => "default:".to_owned(),
+        }
+    }
+}
+
+/// where each setting came from
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Origins {
+    pub(crate) beans: Origin,
+    pub(crate) agent: Origin,
+    pub(crate) launch: Origin,
+    pub(crate) state: Origin,
 }
 
 /// the process environment senzu uses, read once so tests can hand in their own
@@ -110,43 +145,57 @@ fn xdg_dir(var: Option<&Path>, home: &Path, fallback: &str) -> PathBuf {
 /// the settings every command runs with
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Settings {
-    pub(crate) beans: PathBuf,
+    /// none until a flag, env or config sets it
+    pub(crate) beans: Option<PathBuf>,
     pub(crate) agent: String,
     pub(crate) launch: String,
     /// the logs and the tab markers
     pub(crate) state: PathBuf,
+    /// which layer set each one
+    pub(crate) from: Origins,
 }
 
 /// flag > env (clap already merged those) > config > default.
 /// the beans dir has no default. the launch default detects: zellij when
 /// we're inside one, else exec. state has no config key: the log starts
 /// before the config loads, so a config can't say where it goes
-pub(crate) fn resolve(over: Overrides, config: Config, env: &Env) -> Result<Settings, ConfigError> {
-    let beans = over
+pub(crate) fn resolve(over: Overrides, config: Config, env: &Env) -> Settings {
+    let file = || Origin::Config(env.config_path());
+    // unset is `None`: `senzu config` still shows the rest, the other commands error
+    let (beans, beans_from) = over
         .beans
-        .or(config.beans)
-        .map(|p| expand_tilde(p, &env.home))
-        .ok_or_else(|| ConfigError::NoBeans(env.config_path()))?;
-    // absolute like state: the sidebar gets it too, and the senzu dir is its parent
-    let beans = std::path::absolute(&beans).unwrap_or(beans);
-    let agent = over
+        .or_else(|| config.beans.map(|p| (p, file())))
+        .map_or((None, Origin::Default), |(p, from)| {
+            // absolute like state: the sidebar gets it too, and the senzu dir is its parent
+            let p = expand_tilde(p, &env.home);
+            (Some(std::path::absolute(&p).unwrap_or(p)), from)
+        });
+    let (agent, agent_from) = over
         .agent
-        .or(config.agent)
-        .unwrap_or_else(|| DEFAULT_AGENT.to_owned());
+        .or_else(|| config.agent.map(|a| (a, file())))
+        .unwrap_or_else(|| (DEFAULT_AGENT.to_owned(), Origin::Default));
     let detected = if env.in_zellij { "zellij" } else { "exec" };
-    let launch = over
+    let (launch, launch_from) = over
         .launch
-        .or(config.launch)
-        .unwrap_or_else(|| detected.to_owned());
+        .or_else(|| config.launch.map(|l| (l, file())))
+        .unwrap_or_else(|| (detected.to_owned(), Origin::Default));
     // absolute, since a sidebar gets it handed over and runs somewhere else
-    let state = over.state.unwrap_or_else(|| env.state_dir());
+    let (state, state_from) = over
+        .state
+        .unwrap_or_else(|| (env.state_dir(), Origin::Default));
     let state = std::path::absolute(&state).unwrap_or(state);
-    Ok(Settings {
+    Settings {
         beans,
         agent,
         launch,
         state,
-    })
+        from: Origins {
+            beans: beans_from,
+            agent: agent_from,
+            launch: launch_from,
+            state: state_from,
+        },
+    }
 }
 
 /// toml has no shell, so `~/beans` in the config means home
@@ -169,6 +218,14 @@ mod tests {
         }
     }
 
+    fn flag<T>(value: impl Into<T>, name: &str) -> (T, Origin) {
+        (value.into(), Origin::Flag(name.into()))
+    }
+
+    fn file() -> Origin {
+        Origin::Config("/home/crab/.config/senzu/config.toml".into())
+    }
+
     fn config(agent: &str, launch: &str) -> Config {
         Config {
             beans: Some(PathBuf::from("/from/config")),
@@ -180,19 +237,25 @@ mod tests {
     #[test]
     fn overrides_beat_config() {
         let over = Overrides {
-            beans: Some("/from/flag".into()),
-            agent: Some("flag-agent".into()),
-            launch: Some("exec".into()),
-            state: Some("/from/flag/state".into()),
+            beans: Some(flag("/from/flag", "--beans")),
+            agent: Some(("flag-agent".into(), Origin::Env("SENZU_AGENT".into()))),
+            launch: Some(flag("exec", "--launch")),
+            state: Some(flag("/from/flag/state", "--state")),
         };
-        let got = resolve(over, config("config-agent", "zellij"), &env(false)).unwrap();
+        let got = resolve(over, config("config-agent", "zellij"), &env(false));
         assert_eq!(
             got,
             Settings {
-                beans: "/from/flag".into(),
+                beans: Some("/from/flag".into()),
                 agent: "flag-agent".into(),
                 launch: "exec".into(),
                 state: "/from/flag/state".into(),
+                from: Origins {
+                    beans: Origin::Flag("--beans".into()),
+                    agent: Origin::Env("SENZU_AGENT".into()),
+                    launch: Origin::Flag("--launch".into()),
+                    state: Origin::Flag("--state".into()),
+                },
             }
         );
     }
@@ -203,15 +266,20 @@ mod tests {
             Overrides::default(),
             config("config-agent", "exec"),
             &env(true),
-        )
-        .unwrap();
+        );
         assert_eq!(
             got,
             Settings {
-                beans: "/from/config".into(),
+                beans: Some("/from/config".into()),
                 agent: "config-agent".into(),
                 launch: "exec".into(),
                 state: "/home/crab/.local/state/senzu".into(),
+                from: Origins {
+                    beans: file(),
+                    agent: file(),
+                    launch: file(),
+                    state: Origin::Default,
+                },
             }
         );
     }
@@ -219,49 +287,51 @@ mod tests {
     /// only the beans dir set, so everything else is a default
     fn beans_only() -> Overrides {
         Overrides {
-            beans: Some("/b".into()),
+            beans: Some(flag("/b", "--beans")),
             ..Overrides::default()
         }
     }
 
     #[test]
     fn defaults_fill_the_rest() {
-        let got = resolve(beans_only(), Config::default(), &env(false)).unwrap();
+        let got = resolve(beans_only(), Config::default(), &env(false));
         assert_eq!(
             got,
             Settings {
-                beans: "/b".into(),
+                beans: Some("/b".into()),
                 agent: "claude".into(),
                 launch: "exec".into(),
                 state: "/home/crab/.local/state/senzu".into(),
+                from: Origins {
+                    beans: Origin::Flag("--beans".into()),
+                    agent: Origin::Default,
+                    launch: Origin::Default,
+                    state: Origin::Default,
+                },
             }
         );
     }
 
     #[test]
-    fn no_beans_dir_anywhere_is_an_error_naming_the_config() {
-        let err = resolve(Overrides::default(), Config::default(), &env(false)).unwrap_err();
-        assert!(matches!(err, ConfigError::NoBeans(_)), "{err:?}");
-        let msg = err.to_string();
-        assert!(
-            msg.contains("--beans") && msg.contains("config.toml"),
-            "{msg}"
-        );
+    fn no_beans_dir_anywhere_is_unset() {
+        let got = resolve(Overrides::default(), Config::default(), &env(false));
+        assert_eq!(got.beans, None);
+        assert_eq!(got.from.beans, Origin::Default);
     }
 
     #[test]
     fn launch_detects_zellij() {
-        let got = resolve(beans_only(), Config::default(), &env(true)).unwrap();
+        let got = resolve(beans_only(), Config::default(), &env(true));
         assert_eq!(got.launch, "zellij");
     }
 
     #[test]
     fn explicit_launch_beats_detection() {
         let over = Overrides {
-            launch: Some("exec".into()),
+            launch: Some(flag("exec", "--launch")),
             ..beans_only()
         };
-        let got = resolve(over, Config::default(), &env(true)).unwrap();
+        let got = resolve(over, Config::default(), &env(true));
         assert_eq!(got.launch, "exec");
     }
 
@@ -271,8 +341,8 @@ mod tests {
             beans: Some("~/beans".into()),
             ..Config::default()
         };
-        let got = resolve(Overrides::default(), cfg, &env(false)).unwrap();
-        assert_eq!(got.beans, PathBuf::from("/home/crab/beans"));
+        let got = resolve(Overrides::default(), cfg, &env(false));
+        assert_eq!(got.beans, Some(PathBuf::from("/home/crab/beans")));
     }
 
     #[test]
@@ -287,23 +357,32 @@ mod tests {
     #[test]
     fn a_relative_beans_dir_comes_out_absolute() {
         let over = Overrides {
-            beans: Some("beans".into()),
+            beans: Some(flag("beans", "--beans")),
             ..Overrides::default()
         };
-        let got = resolve(over, Config::default(), &env(false)).unwrap();
-        assert!(got.beans.is_absolute(), "{}", got.beans.display());
-        assert!(got.beans.ends_with("beans"), "{}", got.beans.display());
+        let got = resolve(over, Config::default(), &env(false));
+        let beans = got.beans.unwrap();
+        assert!(beans.is_absolute(), "{}", beans.display());
+        assert!(beans.ends_with("beans"), "{}", beans.display());
     }
 
     #[test]
     fn a_relative_state_dir_comes_out_absolute() {
         let over = Overrides {
-            state: Some("rel/state".into()),
+            state: Some(flag("rel/state", "--state")),
             ..beans_only()
         };
-        let got = resolve(over, Config::default(), &env(false)).unwrap();
+        let got = resolve(over, Config::default(), &env(false));
         assert!(got.state.is_absolute(), "{}", got.state.display());
         assert!(got.state.ends_with("rel/state"), "{}", got.state.display());
+    }
+
+    #[test]
+    fn origins_read_as_uris() {
+        assert_eq!(Origin::Flag("--beans".into()).uri(), "flag:--beans");
+        assert_eq!(Origin::Env("SENZU_BEANS".into()).uri(), "env:SENZU_BEANS");
+        assert_eq!(file().uri(), "file:///home/crab/.config/senzu/config.toml");
+        assert_eq!(Origin::Default.uri(), "default:");
     }
 
     #[test]
