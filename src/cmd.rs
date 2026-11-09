@@ -108,11 +108,13 @@ fn run(cli: Cli, env: &Env, tty: bool) -> anyhow::Result<u8> {
             Ok(0)
         }
         Some(Cmd::Show { slug, json }) => {
-            let bean = found(load::one(&settings.beans, &slug)?);
+            let found = load::one(&settings.beans, &slug)?;
+            warn_unknown(&found);
+            let envelope = found.envelope()?;
             if json || !tty {
-                println!("{}", serde_json::to_string_pretty(&bean)?);
+                println!("{}", serde_json::to_string_pretty(&envelope)?);
             } else {
-                print!("{}", output::show(&bean, &env.home));
+                print!("{}", output::show(&envelope, &env.home));
             }
             Ok(0)
         }
@@ -206,10 +208,14 @@ fn load_and_warn(dir: &Path) -> anyhow::Result<Harvest> {
 
 /// a bean for reading: unknown fields are a warning, not a failure
 fn found(found: load::Found) -> crate::bean::Bean {
+    warn_unknown(&found);
+    found.bean
+}
+
+fn warn_unknown(found: &load::Found) {
     for e in &found.unknown {
         eprintln!("senzu: {e}");
     }
-    found.bean
 }
 
 /// md beans are the old format

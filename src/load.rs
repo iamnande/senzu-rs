@@ -1,9 +1,10 @@
 //! reading beans off disk. the cli never writes them
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use url::Url;
 
-use crate::bean::{self, Bean, PLAN_SUFFIX, SCHEMA};
+use crate::bean::{self, Bean, Kind, PLAN_SUFFIX, SCHEMA};
 
 /// one bean that didn't make it. the rest of the dir still loads
 #[derive(Debug, thiserror::Error)]
@@ -190,8 +191,90 @@ pub fn one(dir: &Path, slug: &str) -> Result<Found, OneError> {
 pub struct Found {
     /// the parsed bean
     pub bean: Bean,
+    /// the file it came from
+    pub path: PathBuf,
     /// each a [`LoadError::UnknownField`]
     pub unknown: Vec<LoadError>,
+}
+
+/// a bean, where it lives and what hangs off it. every uri is absolute
+#[derive(Debug, Serialize)]
+pub struct Envelope<'a> {
+    /// the bean, as the file has it
+    pub bean: &'a Bean,
+    /// the bean's own file
+    pub uri: Url,
+    /// the plan beside it when there is one, then the stored ones
+    pub attachments: Vec<Resolved>,
+}
+
+/// an attachment with its uri made absolute
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Resolved {
+    /// what it is
+    pub kind: Kind,
+    /// where it is
+    pub uri: Url,
+}
+
+/// a uri senzu couldn't make absolute
+#[derive(Debug, thiserror::Error)]
+pub enum UriError {
+    /// the path has no absolute form, or no `file://` one
+    #[error("{}: no file uri for it", .0.display())]
+    File(PathBuf),
+    /// a stored ref that won't resolve against the bean
+    #[error("{uri:?}: {source}")]
+    Join {
+        /// the ref as stored
+        uri: String,
+        /// what url said
+        source: url::ParseError,
+    },
+}
+
+/// `path` as a `file://` uri, made absolute without following symlinks
+fn file_uri(path: &Path) -> Result<Url, UriError> {
+    let file = || UriError::File(path.to_owned());
+    let abs = std::path::absolute(path).map_err(|_| file())?;
+    Url::from_file_path(abs).map_err(|()| file())
+}
+
+impl Found {
+    /// relative refs resolve against the bean's file, and `<slug>.plan.md`
+    /// leads the list when it's there
+    ///
+    /// # Errors
+    ///
+    /// a [`UriError`] when a path or a stored ref won't make an absolute uri.
+    pub fn envelope(&self) -> Result<Envelope<'_>, UriError> {
+        let uri = file_uri(&self.path)?;
+        let mut attachments = Vec::new();
+        let plan = self
+            .path
+            .with_file_name(format!("{}{PLAN_SUFFIX}", self.bean.slug));
+        if plan.is_file() {
+            attachments.push(Resolved {
+                kind: Kind::Plan,
+                uri: file_uri(&plan)?,
+            });
+        }
+        for a in &self.bean.attachments {
+            let resolved = uri.join(&a.uri).map_err(|source| UriError::Join {
+                uri: a.uri.clone(),
+                source,
+            })?;
+            attachments.push(Resolved {
+                kind: a.kind,
+                uri: resolved,
+            });
+        }
+        Ok(Envelope {
+            bean: &self.bean,
+            uri,
+            attachments,
+        })
+    }
 }
 
 /// just enough to read the schema before trusting the rest of the shape
@@ -237,7 +320,11 @@ fn parse(path: &Path) -> Result<Found, Vec<LoadError>> {
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
     let problems = bean.problems(stem);
     if problems.is_empty() {
-        Ok(Found { bean, unknown })
+        Ok(Found {
+            bean,
+            path: path.to_owned(),
+            unknown,
+        })
     } else {
         Err(problems
             .into_iter()
