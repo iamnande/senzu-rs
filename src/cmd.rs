@@ -10,10 +10,11 @@ use std::io::IsTerminal as _;
 use std::path::Path;
 use std::process::ExitCode;
 
-use clap::Parser as _;
+use clap::parser::ValueSource;
+use clap::{ArgMatches, CommandFactory as _, FromArgMatches as _};
 
 use crate::cli::{Cli, Cmd};
-use crate::config::{self, Config, ConfigError, Env, Overrides};
+use crate::config::{self, Config, ConfigError, Env, Origin, Overrides};
 use crate::load::{self, Harvest};
 use crate::output::{self, Filter};
 use crate::{current, launch, tabs, telemetry, tui};
@@ -23,11 +24,16 @@ use crate::{current, launch, tabs, telemetry, tui};
 /// one root span per run, closed with its exit code
 pub(crate) fn main() -> ExitCode {
     let env = Env::from_process();
-    let parsed = Cli::try_parse();
-    let state = parsed.as_ref().ok().and_then(|cli| cli.state.clone());
+    // matches kept, so a setting can say whether a flag or the env set it
+    let parsed = Cli::command().try_get_matches().and_then(|matches| {
+        Cli::from_arg_matches(&matches)
+            .map(|cli| (cli, matches))
+            .map_err(|e| e.format(&mut Cli::command()))
+    });
+    let state = parsed.as_ref().ok().and_then(|(cli, _)| cli.state.clone());
     telemetry::init(&state.unwrap_or_else(|| env.state_dir()));
-    let cli = match parsed {
-        Ok(cli) => cli,
+    let (mut cli, matches) = match parsed {
+        Ok(parsed) => parsed,
         Err(e) => {
             // --help and --version come through here too, and aren't failures
             if e.use_stderr() {
@@ -44,7 +50,8 @@ pub(crate) fn main() -> ExitCode {
         exit_code = tracing::field::Empty,
     );
     let _root = root.enter();
-    let code = run(cli, &env, tty).unwrap_or_else(|e| {
+    let over = overrides(&mut cli, &matches);
+    let code = run(Parsed { cli, over }, &env, tty).unwrap_or_else(|e| {
         tracing::error!(error = %e, "failed");
         eprintln!("senzu: {e}");
         exit_code(&e)
@@ -59,20 +66,51 @@ fn cmd_name(cmd: Option<&Cmd>, tty: bool) -> &'static str {
         Some(Cmd::Show { .. }) => "show",
         Some(Cmd::Open { .. }) => "open",
         Some(Cmd::Check) => "check",
+        Some(Cmd::Config { .. }) => "config",
         None if tty => "tui",
         None => "current",
     }
 }
 
-fn run(cli: Cli, env: &Env, tty: bool) -> anyhow::Result<u8> {
+/// a flag or env value, tagged with which of the two set it. the names come
+/// from the arg itself, so they can't drift from `cli.rs`
+fn layered<T>(value: Option<T>, matches: &ArgMatches, id: &str) -> Option<(T, Origin)> {
+    let value = value?;
+    let cmd = Cli::command();
+    let arg = cmd.get_arguments().find(|a| a.get_id() == id);
+    let env_var = arg.and_then(|a| a.get_env());
+    let from = match (matches.value_source(id), env_var) {
+        (Some(ValueSource::EnvVariable), Some(var)) => {
+            Origin::Env(var.to_string_lossy().into_owned())
+        }
+        _ => Origin::Flag(format!(
+            "--{}",
+            arg.and_then(|a| a.get_long()).unwrap_or(id)
+        )),
+    };
+    Some((value, from))
+}
+
+/// takes the settings out of the cli, each tagged with its layer
+fn overrides(cli: &mut Cli, matches: &ArgMatches) -> Overrides {
+    Overrides {
+        beans: layered(cli.beans.take(), matches, "beans"),
+        agent: layered(cli.agent.take(), matches, "agent"),
+        launch: layered(cli.launch.take(), matches, "launch"),
+        state: layered(cli.state.take(), matches, "state"),
+    }
+}
+
+/// the cli, with its settings already taken out as overrides
+struct Parsed {
+    cli: Cli,
+    over: Overrides,
+}
+
+fn run(parsed: Parsed, env: &Env, tty: bool) -> anyhow::Result<u8> {
+    let Parsed { cli, over } = parsed;
     let settings = tracing::info_span!("config").in_scope(|| {
         let config = Config::load(&env.config_path())?;
-        let over = Overrides {
-            beans: cli.beans,
-            agent: cli.agent,
-            launch: cli.launch,
-            state: cli.state,
-        };
         let settings = config::resolve(over, config, env)?;
         tracing::info!(
             beans = %settings.beans.display(),
@@ -86,6 +124,17 @@ fn run(cli: Cli, env: &Env, tty: bool) -> anyhow::Result<u8> {
 
     match cli.cmd {
         Some(Cmd::Check) => check(&settings.beans),
+        Some(Cmd::Config { json }) => {
+            if json || !tty {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&output::setting_rows(&settings))?
+                );
+            } else {
+                print!("{}", output::settings_table(&settings, &env.home));
+            }
+            Ok(0)
+        }
         Some(Cmd::Ls {
             all,
             phase,

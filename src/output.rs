@@ -4,6 +4,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::bean::{Bean, Phase, Priority};
+use crate::config::Settings;
 use crate::load::Envelope;
 
 /// what `ls` keeps: the filters the flags asked for
@@ -143,7 +144,62 @@ fn worktree_label(bean: &Bean, home: &Path) -> String {
     }
 }
 
-/// `/home/crab/x` → `~/x`
+/// one setting, for `senzu config --json`
+#[derive(Debug, Serialize)]
+pub(crate) struct SettingRow {
+    key: &'static str,
+    value: String,
+    from: String,
+}
+
+/// the settings with their layers. paths go out as plain absolute paths, so a
+/// skill can paste one into a command
+pub(crate) fn setting_rows(s: &Settings) -> Vec<SettingRow> {
+    let dir = |p: &Path| p.display().to_string();
+    vec![
+        SettingRow {
+            key: "beans",
+            value: dir(&s.beans),
+            from: s.from.beans.uri(),
+        },
+        SettingRow {
+            key: "agent",
+            value: s.agent.clone(),
+            from: s.from.agent.uri(),
+        },
+        SettingRow {
+            key: "launch",
+            value: s.launch.clone(),
+            from: s.from.launch.uri(),
+        },
+        SettingRow {
+            key: "state",
+            value: dir(&s.state),
+            from: s.from.state.uri(),
+        },
+    ]
+}
+
+/// `key  value  from`, in columns, paths as tilde paths
+pub(crate) fn settings_table(s: &Settings, home: &Path) -> String {
+    let rows = [
+        ("beans", tildify(&s.beans, home), &s.from.beans),
+        ("agent", s.agent.clone(), &s.from.agent),
+        ("launch", s.launch.clone(), &s.from.launch),
+        ("state", tildify(&s.state, home), &s.from.state),
+    ];
+    let value_w = rows
+        .iter()
+        .map(|(_, v, _)| v.chars().count())
+        .max()
+        .unwrap_or(0);
+    let mut out = String::new();
+    for (key, value, from) in rows {
+        let _ = writeln!(out, "{key:6}  {value:value_w$}  {}", from.uri());
+    }
+    out
+}
+
 /// a local file as a tilde path, anything else as the uri
 fn uri_label(uri: &url::Url, home: &Path) -> String {
     match uri.to_file_path() {
@@ -152,6 +208,7 @@ fn uri_label(uri: &url::Url, home: &Path) -> String {
     }
 }
 
+/// `/home/crab/x` → `~/x`
 pub(crate) fn tildify(path: &Path, home: &Path) -> String {
     match path.strip_prefix(home) {
         Ok(rest) if !home.as_os_str().is_empty() => format!("~/{}", rest.display()),
@@ -182,6 +239,30 @@ mod tests {
             uri: Url::parse(&format!("file:///home/crab/beans/{}.json", bean.slug)).unwrap(),
             attachments,
         }
+    }
+
+    #[test]
+    fn settings_table_lines_up_and_tildes_paths() {
+        use crate::config::{Origin, Origins};
+        let s = Settings {
+            beans: "/home/crab/beans".into(),
+            agent: "claude".into(),
+            launch: "exec".into(),
+            state: "/var/senzu".into(),
+            from: Origins {
+                beans: Origin::Env("SENZU_BEANS".into()),
+                agent: Origin::Default,
+                launch: Origin::Flag("--launch".into()),
+                state: Origin::Default,
+            },
+        };
+        assert_eq!(
+            settings_table(&s, Path::new("/home/crab")),
+            "beans   ~/beans     env:SENZU_BEANS\n\
+             agent   claude      default:\n\
+             launch  exec        flag:--launch\n\
+             state   /var/senzu  default:\n"
+        );
     }
 
     #[test]
