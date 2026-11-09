@@ -54,8 +54,8 @@ mod tests {
 
     fn bean(slug: &str) -> Bean {
         serde_json::from_value(serde_json::json!({
-            "schema": 1, "slug": slug, "title": "t", "phase": "plan", "priority": "high",
-            "issue": null, "thread": null, "plan": null,
+            "schema": 2, "slug": slug, "title": "t", "phase": "plan", "priority": "high",
+            "issue": null, "thread": null,
             "next": { "text": "n", "draft": null },
         }))
         .unwrap()
