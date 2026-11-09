@@ -28,6 +28,19 @@ fn ok_on_the_fixtures_and_skips_markdown() {
 }
 
 #[test]
+fn a_plan_beside_its_bean_is_not_a_markdown_bean() {
+    let world = World::new();
+    std::fs::write(world.beans().join("crab-shell.plan.md"), "# crab-shell\n").unwrap();
+    world
+        .senzu()
+        .arg("check")
+        .assert()
+        .success()
+        .stdout("ok 5 beans\n")
+        .stderr(predicate::str::contains("ignoring 1 markdown beans"));
+}
+
+#[test]
 fn one_bad_bean_fails_and_is_named() {
     let world = World::new();
     std::fs::write(world.beans().join("broken.json"), "{ nope").unwrap();

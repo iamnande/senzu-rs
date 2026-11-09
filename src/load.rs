@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::bean::{self, Bean, SCHEMA};
+use crate::bean::{self, Bean, PLAN_SUFFIX, SCHEMA};
 
 /// one bean that didn't make it. the rest of the dir still loads
 #[derive(Debug, thiserror::Error)]
@@ -131,6 +131,10 @@ pub fn load(dir: &Path) -> Result<Harvest, DirError> {
 
     let mut harvest = Harvest::default();
     for path in paths {
+        // a plan belongs to a bean, it isn't one
+        if path.to_str().is_some_and(|p| p.ends_with(PLAN_SUFFIX)) {
+            continue;
+        }
         match path.extension().and_then(|e| e.to_str()) {
             Some("json") => match parse(&path) {
                 Ok(found) => {
