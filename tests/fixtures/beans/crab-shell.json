@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "slug": "crab-shell",
   "title": "a shell for the crab to live in",
   "phase": "execute",
@@ -16,12 +16,16 @@
       "note": null
     }
   ],
-  "plan": {
-    "prd": "/nowhere/docs/prd.md",
-    "spec": null,
-    "page": null,
-    "note": null
-  },
+  "attachments": [
+    {
+      "kind": "artifact",
+      "uri": "https://example.com/artifact/crab-shell"
+    },
+    {
+      "kind": "link",
+      "uri": "notes/crab-shell.md"
+    }
+  ],
   "prs": [],
   "next": {
     "text": "/senzu-execute crab-shell: checkpoint 3",

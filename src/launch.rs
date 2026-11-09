@@ -402,8 +402,8 @@ mod tests {
             None => serde_json::json!([]),
         };
         serde_json::from_value(serde_json::json!({
-            "schema": 1, "slug": "crab-shell", "title": "t", "phase": phase, "priority": "urgent",
-            "issue": null, "thread": null, "plan": null, "repos": repos,
+            "schema": 2, "slug": "crab-shell", "title": "t", "phase": phase, "priority": "urgent",
+            "issue": null, "thread": null, "repos": repos,
             "next": { "text": "n", "draft": null },
         }))
         .unwrap()
