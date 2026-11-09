@@ -2,9 +2,9 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::bean::{self, Bean, PLAN_SUFFIX, SCHEMA};
+use crate::bean::{self, Bean, Kind, PLAN_SUFFIX, SCHEMA};
 
 /// one bean that didn't make it. the rest of the dir still loads
 #[derive(Debug, thiserror::Error)]
@@ -201,8 +201,72 @@ pub fn one(dir: &Path, slug: &str) -> Result<Found, OneError> {
 pub struct Found {
     /// the parsed bean
     pub bean: Bean,
+    /// the file it came from
+    pub path: PathBuf,
     /// each a [`LoadError::UnknownField`]
     pub unknown: Vec<LoadError>,
+}
+
+/// a bean, where it lives and what hangs off it. every path is absolute
+#[derive(Debug, Serialize)]
+pub struct Envelope<'a> {
+    /// the bean, as the file has it
+    pub bean: &'a Bean,
+    /// the bean's own file
+    pub path: PathBuf,
+    /// the plan beside it when there is one, then the stored ones
+    pub attachments: Vec<Resolved>,
+}
+
+/// an attachment, a local file as an absolute path or a web link as written
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Resolved {
+    /// what it is
+    pub kind: Kind,
+    /// where it is
+    #[serde(flatten)]
+    pub at: At,
+}
+
+/// a plain path, so a skill can paste it into a command as is
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum At {
+    /// a local file
+    Path(PathBuf),
+    /// anything with a scheme
+    Url(String),
+}
+
+impl Found {
+    /// relative refs resolve against the bean's dir, and `<slug>.plan.md`
+    /// leads the list when it's there
+    #[must_use]
+    pub fn envelope(&self) -> Envelope<'_> {
+        let path = std::path::absolute(&self.path).unwrap_or_else(|_| self.path.clone());
+        let dir = path.parent().unwrap_or(Path::new("/"));
+        let mut attachments = Vec::new();
+        let plan = dir.join(format!("{}{PLAN_SUFFIX}", self.bean.slug));
+        if plan.is_file() {
+            attachments.push(Resolved {
+                kind: Kind::Plan,
+                at: At::Path(plan),
+            });
+        }
+        for a in &self.bean.attachments {
+            let at = if bean::has_scheme(&a.uri) {
+                At::Url(a.uri.clone())
+            } else {
+                At::Path(dir.join(&a.uri))
+            };
+            attachments.push(Resolved { kind: a.kind, at });
+        }
+        Envelope {
+            bean: &self.bean,
+            path,
+            attachments,
+        }
+    }
 }
 
 /// plans git tracks in the beans dir, relative to it. plans stay local, so
@@ -271,7 +335,11 @@ fn parse(path: &Path) -> Result<Found, Vec<LoadError>> {
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
     let problems = bean.problems(stem);
     if problems.is_empty() {
-        Ok(Found { bean, unknown })
+        Ok(Found {
+            bean,
+            path: path.to_owned(),
+            unknown,
+        })
     } else {
         Err(problems
             .into_iter()

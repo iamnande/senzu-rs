@@ -4,6 +4,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::bean::{Bean, Phase, Priority};
+use crate::load::{At, Envelope};
 
 /// what `ls` keeps: the filters the flags asked for
 #[derive(Debug, Default)]
@@ -99,8 +100,9 @@ pub(crate) fn brief(bean: &Bean, home: &Path) -> String {
     )
 }
 
-/// header fields, open items, the last log line
-pub(crate) fn show(bean: &Bean, home: &Path) -> String {
+/// header fields, where it all lives, open items, the last log line
+pub(crate) fn show(envelope: &Envelope<'_>, home: &Path) -> String {
+    let bean = envelope.bean;
     let mut out = brief(bean, home);
     let _ = writeln!(out, "title: {}", bean.title);
     if let Some(note) = &bean.priority_note {
@@ -112,8 +114,13 @@ pub(crate) fn show(bean: &Bean, home: &Path) -> String {
     for pr in &bean.prs {
         let _ = writeln!(out, "pr: {pr}");
     }
-    for a in &bean.attachments {
-        let _ = writeln!(out, "{}: {}", a.kind, a.uri);
+    let _ = writeln!(out, "bean: {}", tildify(&envelope.path, home));
+    for a in &envelope.attachments {
+        let at = match &a.at {
+            At::Path(path) => tildify(path, home),
+            At::Url(url) => url.clone(),
+        };
+        let _ = writeln!(out, "{}: {at}", a.kind);
     }
     if !bean.open.is_empty() {
         out.push_str("open:\n");
@@ -161,6 +168,38 @@ fn truncate(s: &str, width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bean::Kind;
+    use crate::load::Resolved;
+
+    fn envelope(bean: &Bean, attachments: Vec<Resolved>) -> Envelope<'_> {
+        Envelope {
+            bean,
+            path: format!("/home/crab/beans/{}.json", bean.slug).into(),
+            attachments,
+        }
+    }
+
+    #[test]
+    fn show_puts_local_files_as_tilde_paths_and_the_rest_as_uris() {
+        let b = bean("crab", Priority::Urgent, "next up");
+        let attachments = vec![
+            Resolved {
+                kind: Kind::Plan,
+                at: At::Path("/home/crab/beans/crab.plan.md".into()),
+            },
+            Resolved {
+                kind: Kind::Artifact,
+                at: At::Url("https://example.com/artifact/crab".into()),
+            },
+        ];
+        let got = show(&envelope(&b, attachments), Path::new("/home/crab"));
+        assert!(
+            got.contains(
+                "bean: ~/beans/crab.json\nplan: ~/beans/crab.plan.md\nartifact: https://example.com/artifact/crab\n"
+            ),
+            "{got}"
+        );
+    }
 
     fn bean(slug: &str, priority: Priority, next: &str) -> Bean {
         serde_json::from_value(serde_json::json!({
@@ -228,7 +267,7 @@ mod tests {
             )
             .unwrap(),
         ];
-        let got = show(&b, Path::new("/home/crab"));
+        let got = show(&envelope(&b, vec![]), Path::new("/home/crab"));
         assert!(got.contains("open:\n- [blocks] send it\n"), "{got}");
         assert!(got.ends_with("last: 2026-11-03 plan: second\n"), "{got}");
     }
@@ -236,7 +275,7 @@ mod tests {
     #[test]
     fn no_worktree_says_where_it_opens_and_skips_what_isnt_there() {
         let b = bean("crab", Priority::Urgent, "/senzu-plan crab");
-        let got = show(&b, Path::new("/home/crab"));
+        let got = show(&envelope(&b, vec![]), Path::new("/home/crab"));
         assert!(got.contains("worktree: none\n"), "{got}");
         for absent in ["issue:", "priority note:", "artifact:", "open:", "null"] {
             assert!(!got.contains(absent), "{absent} in {got}");
