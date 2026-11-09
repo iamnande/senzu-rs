@@ -1,9 +1,10 @@
 //! reading beans off disk. the cli never writes them
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use serde::Deserialize;
 
-use crate::bean::{self, Bean, SCHEMA};
+use crate::bean::{self, Bean, PLAN_SUFFIX, SCHEMA};
 
 /// one bean that didn't make it. the rest of the dir still loads
 #[derive(Debug, thiserror::Error)]
@@ -107,6 +108,8 @@ pub struct Harvest {
     pub unknown: Vec<LoadError>,
     /// old `.md` beans sitting in the dir, skipped
     pub markdown: usize,
+    /// `<slug>.plan.md` files with no `<slug>.json` beside them
+    pub orphan_plans: Vec<PathBuf>,
 }
 
 /// read every `*.json` in the dir. a bad bean lands in `errors`, never fails the lot
@@ -130,9 +133,20 @@ pub fn load(dir: &Path) -> Result<Harvest, DirError> {
     paths.sort();
 
     let mut harvest = Harvest::default();
-    for path in paths {
+    for path in &paths {
+        // a plan belongs to a bean, it isn't one
+        if let Some(slug) = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.strip_suffix(PLAN_SUFFIX))
+        {
+            if !paths.contains(&dir.join(format!("{slug}.json"))) {
+                harvest.orphan_plans.push(path.clone());
+            }
+            continue;
+        }
         match path.extension().and_then(|e| e.to_str()) {
-            Some("json") => match parse(&path) {
+            Some("json") => match parse(path) {
                 Ok(found) => {
                     for e in &found.unknown {
                         tracing::info!(file = %path.display(), outcome = "ignored", reason = %e, "unknown field");
@@ -156,6 +170,7 @@ pub fn load(dir: &Path) -> Result<Harvest, DirError> {
         errors = harvest.errors.len(),
         unknown = harvest.unknown.len(),
         markdown = harvest.markdown,
+        orphan_plans = harvest.orphan_plans.len(),
         "loaded"
     );
     Ok(harvest)
@@ -188,6 +203,29 @@ pub struct Found {
     pub bean: Bean,
     /// each a [`LoadError::UnknownField`]
     pub unknown: Vec<LoadError>,
+}
+
+/// plans git tracks in the beans dir, relative to it. plans stay local, so
+/// any is a problem. no git, or not a repo: nothing to check
+#[must_use]
+pub fn tracked_plans(dir: &Path) -> Vec<String> {
+    // an inherited GIT_DIR or GIT_INDEX_FILE (rebase -x, hooks) would point
+    // git at another repo
+    let out = Command::new("git")
+        .args(["ls-files", "-z", "--", &format!("*{PLAN_SUFFIX}")])
+        .current_dir(dir)
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .output();
+    match out {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
+            .split('\0')
+            .filter(|p| !p.is_empty())
+            .map(str::to_owned)
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// just enough to read the schema before trusting the rest of the shape

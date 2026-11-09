@@ -180,13 +180,24 @@ fn run(cli: Cli, env: &Env, tty: bool) -> anyhow::Result<u8> {
 fn check(dir: &Path) -> anyhow::Result<u8> {
     let harvest = load::load(dir)?;
     warn_markdown(harvest.markdown);
+    // a warning, not a failure: a leftover plan breaks nothing
+    for plan in &harvest.orphan_plans {
+        eprintln!(
+            "senzu: {}: a plan with no bean beside it, delete it if the work is done",
+            plan.display()
+        );
+    }
+    let tracked = load::tracked_plans(dir);
     // check is the strict one: a field senzu doesn't know fails it
-    if harvest.errors.is_empty() && harvest.unknown.is_empty() {
+    if harvest.errors.is_empty() && harvest.unknown.is_empty() && tracked.is_empty() {
         println!("ok {} beans", harvest.beans.len());
         return Ok(0);
     }
     for e in harvest.errors.iter().chain(&harvest.unknown) {
         println!("{e}");
+    }
+    for plan in tracked {
+        println!("{plan}: git tracks it, and plans stay local (git rm --cached it)");
     }
     Ok(1)
 }

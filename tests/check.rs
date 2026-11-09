@@ -3,6 +3,10 @@
     clippy::unwrap_used,
     reason = "a test that can't unwrap should fail right there"
 )]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "the git tests hand git and senzu their own PATH"
+)]
 
 mod common;
 
@@ -25,6 +29,105 @@ fn ok_on_the_fixtures_and_skips_markdown() {
         .success()
         .stdout("ok 5 beans\n")
         .stderr(predicate::str::contains("ignoring 1 markdown beans"));
+}
+
+#[test]
+fn a_plan_beside_its_bean_is_not_a_markdown_bean() {
+    let world = World::new();
+    std::fs::write(world.beans().join("crab-shell.plan.md"), "# crab-shell\n").unwrap();
+    world
+        .senzu()
+        .arg("check")
+        .assert()
+        .success()
+        .stdout("ok 5 beans\n")
+        .stderr(predicate::str::contains("ignoring 1 markdown beans"));
+}
+
+/// git in the beans dir, with a clean env so an inherited `GIT_DIR` can't
+/// point it at a real repo
+fn git(world: &World, args: &[&str]) {
+    git_in(world, &world.beans(), args);
+}
+
+fn git_in(world: &World, dir: &std::path::Path, args: &[&str]) {
+    let ok = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .env_clear()
+        .env("HOME", world.home.path())
+        .env("PATH", std::env::var_os("PATH").unwrap())
+        .status()
+        .unwrap();
+    assert!(ok.success(), "git {args:?}");
+}
+
+#[test]
+fn a_plan_git_tracks_fails_and_is_named() {
+    let world = World::new();
+    std::fs::write(world.beans().join("crab-shell.plan.md"), "# crab-shell\n").unwrap();
+    git(&world, &["init", "-q"]);
+    git(&world, &["add", "crab-shell.plan.md"]);
+    world
+        .senzu()
+        .env("PATH", std::env::var_os("PATH").unwrap())
+        .arg("check")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "crab-shell.plan.md: git tracks it, and plans stay local",
+        ));
+}
+
+/// the beans can be tracked, just not the plan beside them
+#[test]
+fn tracked_beans_and_an_untracked_plan_pass() {
+    let world = World::new();
+    std::fs::write(world.beans().join("crab-shell.plan.md"), "# crab-shell\n").unwrap();
+    git(&world, &["init", "-q"]);
+    git(&world, &["add", "*.json"]);
+    world
+        .senzu()
+        .env("PATH", std::env::var_os("PATH").unwrap())
+        .arg("check")
+        .assert()
+        .success()
+        .stdout("ok 5 beans\n");
+}
+
+/// a hook in another repo hands senzu its index. check reads the beans dir's own
+#[test]
+fn an_inherited_index_cant_name_another_repos_plan() {
+    let world = World::new();
+    let other = world.home.path().join("other");
+    std::fs::create_dir_all(&other).unwrap();
+    std::fs::write(other.join("crab-other.plan.md"), "# crab-other\n").unwrap();
+    git_in(&world, &other, &["init", "-q"]);
+    git_in(&world, &other, &["add", "crab-other.plan.md"]);
+    git(&world, &["init", "-q"]);
+    world
+        .senzu()
+        .env("PATH", std::env::var_os("PATH").unwrap())
+        .env("GIT_INDEX_FILE", other.join(".git/index"))
+        .arg("check")
+        .assert()
+        .success()
+        .stdout("ok 5 beans\n");
+}
+
+#[test]
+fn a_plan_with_no_bean_warns_and_passes() {
+    let world = World::new();
+    std::fs::write(world.beans().join("crab-gone.plan.md"), "# crab-gone\n").unwrap();
+    world
+        .senzu()
+        .arg("check")
+        .assert()
+        .success()
+        .stdout("ok 5 beans\n")
+        .stderr(predicate::str::contains(
+            "crab-gone.plan.md: a plan with no bean beside it",
+        ));
 }
 
 #[test]
