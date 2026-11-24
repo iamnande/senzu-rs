@@ -42,7 +42,7 @@ logs go to the state dir, a file a day, a week kept. `RUST_LOG` sets the level.
 senzu                 tui on a tty, the current stream otherwise
 senzu ls [--all]      open streams, urgent and high first
 senzu show <slug>     one bean
-senzu open <slug>     launch the agent in the bean's worktree
+senzu open <slug>     launch the agent on the bean's next skill, from the beans dir's parent
 senzu check           validate every bean
 senzu config          each setting and where it came from
 ```
