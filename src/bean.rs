@@ -1,14 +1,19 @@
-//! the bean schema: one stream of work per `<slug>.json`. these types are the
-//! format, so the skills that write beans, `senzu check` and anything else
-//! that reads them share this one definition.
+//! da beans, yeah - that'll be about a bakers dozen for me bob.
 //!
-//! every bean says which `schema` it was written for. only a breaking change
-//! (a field renamed, removed or retyped) bumps it. a new field doesn't: an
-//! older senzu reads past it with a warning, and `check` flags it.
+//! a bean is one stream of work held in a `<slug>.json` file. it keeps
+//! state, artifacts (by reference) and progress of this one stream.
 //!
-//! terms: a fact is sourced, a decision is settled, an open item is
-//! unresolved, a draft is work product (an email, a script, a map), a log
-//! entry is something that happened.
+//! beans are versioned, because we learn every day - and someday in the future
+//! we'll need a breaking change to the schema. is overhauling the schema in
+//! one shot relatively cheap in the current era - sure. knowing when there's
+//! a breaking change, and building protections around it is valuable anyway.
+//!
+//! terms:
+//! - a fact is sourced
+//! - a decision is settled
+//! - an open item is unresolved
+//! - a draft is work product (an email, a script, a map)
+//! - a log entry is something that happened
 
 use std::collections::HashSet;
 use std::fmt;
@@ -17,10 +22,10 @@ use std::path::{Path, PathBuf};
 use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
 
-/// the schema this senzu reads. a bean with any other one is refused
+/// the current active schema
 pub const SCHEMA: u32 = 2;
 
-/// a bean's rfc sits beside it as `<slug>.rfc.md`
+/// bean rfcs live at `<slug>.rfc.md`
 pub const RFC_SUFFIX: &str = ".rfc.md";
 
 /// one stream of work, one `<slug>.json` in the beans dir
@@ -45,7 +50,7 @@ pub struct Bean {
     /// the repos it touches. the first one that exists is where the agent opens
     #[serde(default)]
     pub repos: Vec<Repo>,
-    /// what hangs off it. the rfc isn't stored here, it's found beside the bean
+    /// the companion entities hanging off the attached bean
     #[serde(default)]
     pub attachments: Vec<Attachment>,
     /// pull request urls
@@ -140,27 +145,27 @@ pub struct Repo {
     pub note: Option<String>,
 }
 
-/// something hung off a bean: an artifact, an issue, a link
+/// bean attachments can be things like an rfc, an artifact, a ticket url, or a generic url.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Attachment {
-    /// what it is, so a reader knows how to show it
+    /// we got rfc shrimp, artifact shrimp, issue shrimp, and link shrimp
     pub kind: Kind,
-    /// where it is. absolute, or relative to the bean's own file
+    /// oh uri-eo, where for art thou uri-eo
     pub uri: String,
 }
 
-/// what an attachment is. closed, so a typo fails `check`
+/// the top-level categories of attachments. track what you care about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
-    /// the `<slug>.rfc.md` beside the bean. found, never stored
+    /// oohhhh lookout - mr rfc up in da house
     #[serde(alias = "plan")]
     Rfc,
-    /// a claude.ai artifact
+    /// ewww.. you're like, still using claude.ai artifacts?
     Artifact,
-    /// a tracker issue
+    /// itsm tears turn into real silver dollars.. so i'm told
     Issue,
-    /// any other url
+    /// insert generic url from the interwebs thats TOTALLY not sus.. nope, totally not sus.
     Link,
 }
 
@@ -195,7 +200,7 @@ pub struct LogEntry {
 pub enum Phase {
     /// figuring out what the problem is
     Ground,
-    /// the rfc. beans from before the rename still say `plan`
+    /// please, be kind - rewind. lets give plan a gentle send-off
     #[serde(alias = "plan")]
     #[value(alias = "plan")]
     Rfc,

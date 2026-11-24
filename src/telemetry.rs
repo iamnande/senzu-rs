@@ -6,13 +6,17 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
-/// one file a day, `senzu.2026-11-03.log`, and only the last week kept.
-/// the date is utc, so west of greenwich the evening's file is named for tomorrow
+/// logs roll over daily (`senzu.2026-11-03.log`), and we keep a week of them.
+/// heads up: the date is utc, so west of greenwich tonight's file already has
+/// tomorrow's name.
 const KEEP_DAYS: usize = 7;
 
-/// json lines to a file, never stdout, each with its span list. writes are
-/// synchronous since exec and `process::exit` skip destructors, and a buffered
-/// writer would drop the last lines. no state dir, no logs
+/// logs go to a file as json lines (with their spans), never to stdout.
+///
+/// writes are synchronous on purpose. exec and `process::exit` skip
+/// destructors, so a buffered writer would lose the last few lines.
+///
+/// no state dir means no logs.
 pub(crate) fn init(state_dir: &Path) {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let file = std::fs::create_dir_all(state_dir).ok().and_then(|()| {

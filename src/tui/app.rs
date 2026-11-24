@@ -6,7 +6,7 @@ use crate::bean::{Bean, Phase};
 use crate::output::{self, Filter};
 use crate::tabs::Live;
 
-/// what the event loop should do after a key. everything else is state
+/// what the event loop should do after a key. everything else is just state.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Action {
     Quit,
@@ -25,14 +25,15 @@ pub(crate) enum Mode {
     Keys,
 }
 
-/// the whole tui state. `update` changes it and never touches a terminal
+/// the whole tui state. `update` changes it, and never touches a terminal.
 pub(crate) struct Board {
     pub(crate) beans: Vec<Bean>,
     /// indexes into `beans`, sorted and filtered, in display order
     pub(crate) visible: Vec<usize>,
     /// index into `visible`
     pub(crate) selected: usize,
-    /// every priority and done beans too, like `ls --all --phase` for each
+    /// every priority, done beans included, like running `ls --all --phase`
+    /// for each phase
     pub(crate) all: bool,
     pub(crate) filter: String,
     pub(crate) mode: Mode,
@@ -81,8 +82,8 @@ impl Board {
         self.refresh(Some(slug));
     }
 
-    /// the draft ids the selected bean links to: next's first, then open items
-    /// in order, each once even when two things link the same draft
+    /// the draft ids the selected bean links to. next's comes first, then the
+    /// open items in order. a draft shows once, even when two things link it.
     pub(crate) fn drafts_for_selected(&self) -> Vec<&str> {
         let Some(bean) = self.selected_bean() else {
             return Vec::new();
