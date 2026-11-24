@@ -1,24 +1,48 @@
+use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::bean::{Bean, Phase};
 use crate::config::Env;
 use crate::tabs;
 
-/// an agent senzu knows how to start. a new agent is a new entry in AGENTS
-pub(crate) struct Agent {
-    pub(crate) name: &'static str,
-    pub(crate) program: &'static str,
-    args: fn(&Bean) -> Vec<String>,
+/// an agent senzu knows how to start. adding one is a new variant.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum Agent {
+    #[default]
+    Claude,
 }
 
-pub(crate) const AGENTS: &[Agent] = &[Agent {
-    name: "claude",
-    program: "claude",
-    args: claude_args,
-}];
+impl Agent {
+    /// the name flags, env and config use
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+        }
+    }
+
+    /// what gets run, found on PATH
+    pub(crate) fn program(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+        }
+    }
+
+    fn args(self, b: &Bean) -> Vec<String> {
+        match self {
+            Self::Claude => claude_args(b),
+        }
+    }
+}
+
+impl fmt::Display for Agent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
 
 /// the phase skills are `/senzu-<phase>`
 const SKILL_PREFIX: &str = "senzu-";
@@ -33,7 +57,7 @@ fn claude_args(b: &Bean) -> Vec<String> {
 }
 
 /// where the agent opens
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Launcher {
     /// replace this process
@@ -42,42 +66,20 @@ pub(crate) enum Launcher {
     Zellij,
 }
 
-const LAUNCHERS: &[(&str, Launcher)] = &[("exec", Launcher::Exec), ("zellij", Launcher::Zellij)];
-
-/// a name that isn't a profile. a usage mistake, so exit 2
-#[derive(Debug, thiserror::Error)]
-#[error("unknown {kind} {name:?}, known: {known}")]
-pub(crate) struct UnknownProfile {
-    kind: &'static str,
-    name: String,
-    known: String,
+impl Launcher {
+    /// the name flags, env and config use
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Exec => "exec",
+            Self::Zellij => "zellij",
+        }
+    }
 }
 
-pub(crate) fn agent(name: &str) -> Result<&'static Agent, UnknownProfile> {
-    AGENTS
-        .iter()
-        .find(|a| a.name == name)
-        .ok_or_else(|| UnknownProfile {
-            kind: "agent",
-            name: name.to_owned(),
-            known: AGENTS.iter().map(|a| a.name).collect::<Vec<_>>().join(", "),
-        })
-}
-
-pub(crate) fn launcher(name: &str) -> Result<Launcher, UnknownProfile> {
-    LAUNCHERS
-        .iter()
-        .find(|(n, _)| *n == name)
-        .map(|(_, t)| *t)
-        .ok_or_else(|| UnknownProfile {
-            kind: "launcher",
-            name: name.to_owned(),
-            known: LAUNCHERS
-                .iter()
-                .map(|(n, _)| *n)
-                .collect::<Vec<_>>()
-                .join(", "),
-        })
+impl fmt::Display for Launcher {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
+    }
 }
 
 /// a launch is data: what to run, where, under which session name
@@ -131,18 +133,8 @@ pub(crate) enum LaunchError {
 /// the agent and launcher a launch uses, resolved from flag, env, config or default
 #[derive(Clone, Copy)]
 pub(crate) struct Profile {
-    pub(crate) agent: &'static Agent,
+    pub(crate) agent: Agent,
     pub(crate) launcher: Launcher,
-}
-
-impl Profile {
-    /// unknown names are usage mistakes, caught before anything runs
-    pub(crate) fn resolve(agent_name: &str, launcher_name: &str) -> Result<Self, UnknownProfile> {
-        Ok(Self {
-            agent: agent(agent_name)?,
-            launcher: launcher(launcher_name)?,
-        })
-    }
 }
 
 /// every agent opens in the senzu dir, whatever the bean's worktrees are
@@ -158,8 +150,8 @@ pub(crate) fn plan(bean: &Bean, profile: Profile, site: Site) -> Result<Launch, 
     let mut planned = Launch {
         launcher,
         existing_tab: false,
-        program: agent.program.to_owned(),
-        args: (agent.args)(bean),
+        program: agent.program().to_owned(),
+        args: agent.args(bean),
         cwd,
         session: slug.clone(),
         marker: None,
@@ -178,9 +170,9 @@ pub(crate) fn plan(bean: &Bean, profile: Profile, site: Site) -> Result<Launch, 
             "--state".into(),
             site.state_dir.display().to_string(),
             "--agent".into(),
-            agent.name.into(),
+            agent.name().into(),
             "--launch".into(),
-            "zellij".into(),
+            Launcher::Zellij.name().into(),
             "--sidebar".into(),
             "--tab".into(),
             slug.clone(),
@@ -306,10 +298,10 @@ pub(crate) fn senzu_dir(beans_dir: &Path) -> &Path {
 
 /// everything that can be known wrong before starting anything: the agent and,
 /// for zellij, the multiplexer on PATH and us inside it
-pub(crate) fn preflight(launch: &Launch, agent: &Agent, env: &Env) -> Result<(), LaunchError> {
+pub(crate) fn preflight(launch: &Launch, agent: Agent, env: &Env) -> Result<(), LaunchError> {
     let on_path = |p: &str| find_on_path(p, env.path.as_deref()).is_some();
-    if !on_path(agent.program) {
-        return Err(LaunchError::NotOnPath(agent.program.to_owned()));
+    if !on_path(agent.program()) {
+        return Err(LaunchError::NotOnPath(agent.program().to_owned()));
     }
     if launch.launcher == Launcher::Zellij {
         if !env.in_zellij {
@@ -389,7 +381,7 @@ mod tests {
 
     fn profile(launcher: Launcher) -> Profile {
         Profile {
-            agent: agent("claude").unwrap(),
+            agent: Agent::Claude,
             launcher,
         }
     }
@@ -526,12 +518,18 @@ mod tests {
         assert_eq!(got, Path::new("/home/crab/.cargo/bin/senzu"));
     }
 
+    /// serde, clap and the sidebar's args all have to agree on the names
     #[test]
-    fn unknown_names_list_the_known_ones() {
-        let err = agent("codex").err().unwrap().to_string();
-        assert_eq!(err, "unknown agent \"codex\", known: claude");
-        let err = launcher("tmux").err().unwrap().to_string();
-        assert_eq!(err, "unknown launcher \"tmux\", known: exec, zellij");
+    fn names_match_what_clap_and_serde_say() {
+        use clap::ValueEnum as _;
+        for a in Agent::value_variants() {
+            assert_eq!(a.to_possible_value().unwrap().get_name(), a.name());
+            assert_eq!(serde_json::to_value(a).unwrap(), a.name());
+        }
+        for l in Launcher::value_variants() {
+            assert_eq!(l.to_possible_value().unwrap().get_name(), l.name());
+            assert_eq!(serde_json::to_value(l).unwrap(), l.name());
+        }
     }
 
     #[test]

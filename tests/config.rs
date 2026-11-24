@@ -19,7 +19,7 @@ fn config_json(cmd: &mut assert_cmd::Command) -> Vec<Value> {
 #[test]
 fn a_flag_says_flag_and_the_env_says_env() {
     let world = World::new();
-    let got = config_json(world.senzu().env("SENZU_AGENT", "crab"));
+    let got = config_json(world.senzu().env("SENZU_AGENT", "claude"));
     let beans = world.beans().display().to_string();
     assert_eq!(
         got[0],
@@ -27,7 +27,7 @@ fn a_flag_says_flag_and_the_env_says_env() {
     );
     assert_eq!(
         got[1],
-        json!({ "key": "agent", "value": "crab", "from": "env:SENZU_AGENT" })
+        json!({ "key": "agent", "value": "claude", "from": "env:SENZU_AGENT" })
     );
 }
 

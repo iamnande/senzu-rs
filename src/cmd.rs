@@ -178,7 +178,10 @@ fn run(parsed: Parsed, env: &Env, tty: bool) -> anyhow::Result<u8> {
             Ok(0)
         }
         Some(Cmd::Open { slug, dry_run }) => {
-            let profile = launch::Profile::resolve(&settings.agent, &settings.launch)?;
+            let profile = launch::Profile {
+                agent: settings.agent,
+                launcher: settings.launch,
+            };
             let bean = found(load::one(beans()?, &slug)?);
             let exe = launch::this_exe()?;
             let open_tabs = if profile.launcher == launch::Launcher::Zellij {
@@ -204,7 +207,10 @@ fn run(parsed: Parsed, env: &Env, tty: bool) -> anyhow::Result<u8> {
         }
         None if tty => {
             // unknown profiles are a usage mistake, caught before the screen changes
-            let profile = launch::Profile::resolve(&settings.agent, &settings.launch)?;
+            let profile = launch::Profile {
+                agent: settings.agent,
+                launcher: settings.launch,
+            };
             let layout = if cli.sidebar {
                 tui::Layout::Sidebar
             } else {
@@ -299,11 +305,10 @@ fn term_width() -> usize {
     crossterm::terminal::size().map_or(100, |(cols, _)| usize::from(cols))
 }
 
-/// config and profile mistakes are usage mistakes (2), an unknown slug is 3, the rest is 1
+/// config mistakes are usage mistakes (2), an unknown slug is 3, the rest is 1.
+/// clap exits 2 on its own for a bad flag or env value
 fn exit_code(e: &anyhow::Error) -> u8 {
-    if e.downcast_ref::<ConfigError>().is_some()
-        || e.downcast_ref::<launch::UnknownProfile>().is_some()
-    {
+    if e.downcast_ref::<ConfigError>().is_some() {
         2
     } else if matches!(e.downcast_ref(), Some(load::OneError::Unknown(_))) {
         3

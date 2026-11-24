@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-const DEFAULT_AGENT: &str = "claude";
+use crate::launch::{Agent, Launcher};
+
 const DEFAULT_WORKTREES: &str = "~/worktrees";
 
 /// ~/.config/senzu/config.toml, every key optional
@@ -12,8 +13,8 @@ const DEFAULT_WORKTREES: &str = "~/worktrees";
 #[serde(deny_unknown_fields)]
 pub(crate) struct Config {
     pub(crate) beans: Option<PathBuf>,
-    pub(crate) agent: Option<String>,
-    pub(crate) launch: Option<String>,
+    pub(crate) agent: Option<Agent>,
+    pub(crate) launch: Option<Launcher>,
     pub(crate) worktrees: Option<PathBuf>,
     pub(crate) branch_prefix: Option<String>,
     pub(crate) thread_channel: Option<String>,
@@ -60,8 +61,8 @@ impl Config {
 #[derive(Debug, Default)]
 pub(crate) struct Overrides {
     pub(crate) beans: Option<(PathBuf, Origin)>,
-    pub(crate) agent: Option<(String, Origin)>,
-    pub(crate) launch: Option<(String, Origin)>,
+    pub(crate) agent: Option<(Agent, Origin)>,
+    pub(crate) launch: Option<(Launcher, Origin)>,
     pub(crate) state: Option<(PathBuf, Origin)>,
     pub(crate) worktrees: Option<(PathBuf, Origin)>,
     pub(crate) branch_prefix: Option<(String, Origin)>,
@@ -157,8 +158,8 @@ fn xdg_dir(var: Option<&Path>, home: &Path, fallback: &str) -> PathBuf {
 pub(crate) struct Settings {
     /// none until a flag, env or config sets it
     pub(crate) beans: Option<PathBuf>,
-    pub(crate) agent: String,
-    pub(crate) launch: String,
+    pub(crate) agent: Agent,
+    pub(crate) launch: Launcher,
     /// the logs and the tab markers
     pub(crate) state: PathBuf,
     /// for the skills: where worktrees go
@@ -189,12 +190,16 @@ pub(crate) fn resolve(over: Overrides, config: Config, env: &Env) -> Settings {
     let (agent, agent_from) = over
         .agent
         .or_else(|| config.agent.map(|a| (a, file())))
-        .unwrap_or_else(|| (DEFAULT_AGENT.to_owned(), Origin::Default));
-    let detected = if env.in_zellij { "zellij" } else { "exec" };
+        .unwrap_or_else(|| (Agent::default(), Origin::Default));
+    let detected = if env.in_zellij {
+        Launcher::Zellij
+    } else {
+        Launcher::Exec
+    };
     let (launch, launch_from) = over
         .launch
         .or_else(|| config.launch.map(|l| (l, file())))
-        .unwrap_or_else(|| (detected.to_owned(), Origin::Default));
+        .unwrap_or((detected, Origin::Default));
     // absolute, since a sidebar gets it handed over and runs somewhere else
     let (state, state_from) = over
         .state
@@ -275,11 +280,11 @@ mod tests {
         Origin::Config("/home/crab/.config/senzu/config.toml".into())
     }
 
-    fn config(agent: &str, launch: &str) -> Config {
+    fn config(launch: Launcher) -> Config {
         Config {
             beans: Some(PathBuf::from("/from/config")),
-            agent: Some(agent.into()),
-            launch: Some(launch.into()),
+            agent: Some(Agent::Claude),
+            launch: Some(launch),
             ..Config::default()
         }
     }
@@ -288,18 +293,18 @@ mod tests {
     fn overrides_beat_config() {
         let over = Overrides {
             beans: Some(flag("/from/flag", "--beans")),
-            agent: Some(("flag-agent".into(), Origin::Env("SENZU_AGENT".into()))),
-            launch: Some(flag("exec", "--launch")),
+            agent: Some((Agent::Claude, Origin::Env("SENZU_AGENT".into()))),
+            launch: Some(flag(Launcher::Exec, "--launch")),
             state: Some(flag("/from/flag/state", "--state")),
             ..Overrides::default()
         };
-        let got = resolve(over, config("config-agent", "zellij"), &env(false));
+        let got = resolve(over, config(Launcher::Zellij), &env(false));
         assert_eq!(
             got,
             Settings {
                 beans: Some("/from/flag".into()),
-                agent: "flag-agent".into(),
-                launch: "exec".into(),
+                agent: Agent::Claude,
+                launch: Launcher::Exec,
                 state: "/from/flag/state".into(),
                 worktrees: "/home/crab/worktrees".into(),
                 branch_prefix: None,
@@ -319,17 +324,13 @@ mod tests {
 
     #[test]
     fn config_beats_defaults() {
-        let got = resolve(
-            Overrides::default(),
-            config("config-agent", "exec"),
-            &env(true),
-        );
+        let got = resolve(Overrides::default(), config(Launcher::Exec), &env(true));
         assert_eq!(
             got,
             Settings {
                 beans: Some("/from/config".into()),
-                agent: "config-agent".into(),
-                launch: "exec".into(),
+                agent: Agent::Claude,
+                launch: Launcher::Exec,
                 state: "/home/crab/.local/state/senzu".into(),
                 worktrees: "/home/crab/worktrees".into(),
                 branch_prefix: None,
@@ -362,8 +363,8 @@ mod tests {
             got,
             Settings {
                 beans: Some("/b".into()),
-                agent: "claude".into(),
-                launch: "exec".into(),
+                agent: Agent::Claude,
+                launch: Launcher::Exec,
                 state: "/home/crab/.local/state/senzu".into(),
                 worktrees: "/home/crab/worktrees".into(),
                 branch_prefix: None,
@@ -391,17 +392,17 @@ mod tests {
     #[test]
     fn launch_detects_zellij() {
         let got = resolve(beans_only(), Config::default(), &env(true));
-        assert_eq!(got.launch, "zellij");
+        assert_eq!(got.launch, Launcher::Zellij);
     }
 
     #[test]
     fn explicit_launch_beats_detection() {
         let over = Overrides {
-            launch: Some(flag("exec", "--launch")),
+            launch: Some(flag(Launcher::Exec, "--launch")),
             ..beans_only()
         };
         let got = resolve(over, Config::default(), &env(true));
-        assert_eq!(got.launch, "exec");
+        assert_eq!(got.launch, Launcher::Exec);
     }
 
     #[test]

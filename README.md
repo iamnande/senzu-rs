@@ -14,7 +14,7 @@ a bean is one stream of work, a `<slug>.json` in the beans dir. `senzu check` sa
 
 ## config
 
-every setting resolves flag > env > config > default. the config is `~/.config/senzu/config.toml` (or under `$XDG_CONFIG_HOME`), and every key is optional. `senzu config` shows each value and the layer that set it.
+every setting resolves flag > env > config > default. the config is `~/.config/senzu/config.toml` (or under `$XDG_CONFIG_HOME`). no key has to be in it, but whatever is in it has to be valid: an unknown key, or an `agent` or `launch` senzu doesn't know, stops every command with exit 2. `senzu config` shows each value and the layer that set it.
 
 | setting | flag | env | config | default |
 |---|---|---|---|---|
