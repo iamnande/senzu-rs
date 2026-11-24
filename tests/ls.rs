@@ -57,9 +57,24 @@ fn all_brings_back_medium_but_not_done() {
 #[test]
 fn phase_filters_and_can_ask_for_done() {
     let world = World::new();
-    assert_eq!(slugs(&world, &["--phase", "plan"]), ["harden-the-hut"]);
+    assert_eq!(slugs(&world, &["--phase", "rfc"]), ["harden-the-hut"]);
     assert_eq!(slugs(&world, &["--phase", "done"]), Vec::<String>::new());
     assert_eq!(slugs(&world, &["--phase", "done", "--all"]), ["old-molt"]);
+}
+
+/// rfc was called plan. the fixture still says `"phase": "plan"`, and the old
+/// flag value still works
+#[test]
+fn plan_is_still_read_as_rfc() {
+    let world = World::new();
+    assert_eq!(slugs(&world, &["--phase", "plan"]), ["harden-the-hut"]);
+    let got = world
+        .senzu()
+        .args(["show", "harden-the-hut"])
+        .output()
+        .unwrap();
+    let got: serde_json::Value = serde_json::from_slice(&got.stdout).unwrap();
+    assert_eq!(got["bean"]["phase"], "rfc");
 }
 
 #[test]

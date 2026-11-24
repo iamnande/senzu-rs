@@ -297,8 +297,8 @@ mod tests {
         let b = bean("crab", Priority::Urgent, "next up");
         let attachments = vec![
             Resolved {
-                kind: Kind::Plan,
-                at: At::Path("/home/crab/beans/crab.plan.md".into()),
+                kind: Kind::Rfc,
+                at: At::Path("/home/crab/beans/crab.rfc.md".into()),
             },
             Resolved {
                 kind: Kind::Artifact,
@@ -308,7 +308,7 @@ mod tests {
         let got = show(&envelope(&b, attachments), Path::new("/home/crab"));
         assert!(
             got.contains(
-                "bean: ~/beans/crab.json\nplan: ~/beans/crab.plan.md\nartifact: https://example.com/artifact/crab\n"
+                "bean: ~/beans/crab.json\nrfc: ~/beans/crab.rfc.md\nartifact: https://example.com/artifact/crab\n"
             ),
             "{got}"
         );
@@ -330,8 +330,8 @@ mod tests {
         let got = ls_table(&[&a, &b], 200);
         assert_eq!(
             got,
-            "crab         urgent   plan     /senzu-plan crab\n\
-             hermit-crab  high     plan     /senzu-plan hermit-crab\n"
+            "crab         urgent   rfc      /senzu-plan crab\n\
+             hermit-crab  high     rfc      /senzu-plan hermit-crab\n"
         );
     }
 
@@ -343,7 +343,7 @@ mod tests {
             "a very long next step that goes on",
         );
         let got = ls_table(&[&a], 30);
-        assert_eq!(got, "crab  urgent   plan     a ver…\n");
+        assert_eq!(got, "crab  urgent   rfc      a ver…\n");
         assert_eq!(got.trim_end().chars().count(), 30);
     }
 
@@ -382,7 +382,7 @@ mod tests {
         ];
         let got = show(&envelope(&b, vec![]), Path::new("/home/crab"));
         assert!(got.contains("open:\n- [blocks] send it\n"), "{got}");
-        assert!(got.ends_with("last: 2026-11-03 plan: second\n"), "{got}");
+        assert!(got.ends_with("last: 2026-11-03 rfc: second\n"), "{got}");
     }
 
     #[test]

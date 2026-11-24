@@ -54,11 +54,11 @@ fn json_says_where_the_bean_is_and_resolves_its_refs() {
 #[test]
 fn a_plan_beside_the_bean_leads_the_attachments() {
     let world = World::new();
-    std::fs::write(world.beans().join("crab-shell.plan.md"), "# crab-shell\n").unwrap();
+    std::fs::write(world.beans().join("crab-shell.rfc.md"), "# crab-shell\n").unwrap();
     let got = show_json(&world, "crab-shell");
     assert_eq!(
         got["attachments"][0],
-        json!({ "kind": "plan", "path": path(&world, "crab-shell.plan.md") })
+        json!({ "kind": "rfc", "path": path(&world, "crab-shell.rfc.md") })
     );
 }
 
