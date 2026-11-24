@@ -134,7 +134,7 @@ pub fn load(dir: &Path) -> Result<Harvest, DirError> {
 
     let mut harvest = Harvest::default();
     for path in &paths {
-        // an rfc belongs to a bean, it isn't one
+        // an rfc belongs to a bean, it must never become one
         if let Some(slug) = path
             .file_name()
             .and_then(|n| n.to_str())

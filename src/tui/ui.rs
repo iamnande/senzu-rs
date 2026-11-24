@@ -25,7 +25,8 @@ const SPACING: u16 = 1;
 /// a block title takes a row of its own
 const TITLE_ROW: u16 = 1;
 const PANEL_PADDING: Padding = Padding::new(2, 2, 1, 0);
-/// title, priority, a gap, the phase, a gap, the dots
+/// rows in the now panel: the title, priority, a gap, the phase, a gap, and the
+/// dots
 const NOW_ROWS: u16 = 7;
 /// the longest phase name, and two cells of air
 const PHASE_COL: usize = 9;
@@ -84,8 +85,8 @@ fn panel<'a>(title: &str) -> Block<'a> {
         .padding(PANEL_PADDING)
 }
 
-/// sidebar on the left, the selected stream on the right, a bar along the bottom.
-/// the sidebar layout is the sidebar and the bar alone
+/// the sidebar on the left, the selected stream on the right, and a bar along
+/// the bottom. the sidebar layout is just the sidebar and the bar.
 pub(crate) fn render(frame: &mut Frame, board: &Board, view: View) {
     frame.render_widget(Block::new().style(Style::new().bg(BG).fg(FG)), frame.area());
     let [main, bar] =
@@ -129,7 +130,8 @@ pub(crate) fn render(frame: &mut Frame, board: &Board, view: View) {
     }
 }
 
-/// why there's nothing to show: nothing matches, or nothing's there to match
+/// why there's nothing to show. either nothing matches, or there's nothing to
+/// match.
 fn empty_note(board: &Board) -> String {
     if !board.beans.is_empty() {
         return "no streams match".into();
@@ -235,8 +237,9 @@ fn sidebar(frame: &mut Frame, screen: Screen, area: Rect) {
     );
 }
 
-/// streams under quiet priority labels. returns the item to highlight, since
-/// the labels shift every index
+/// the streams, grouped under quiet priority labels.
+///
+/// returns the item to highlight, since the labels shift every index.
 fn list_items(board: &Board, today: Date, width: usize) -> (Vec<ListItem<'static>>, Option<usize>) {
     let mut items = Vec::new();
     let mut selected = None;
@@ -274,7 +277,7 @@ fn list_items(board: &Board, today: Date, width: usize) -> (Vec<ListItem<'static
     (items, selected)
 }
 
-/// a tab is open: filled once the session wrote the bean, hollow until then
+/// marks an open tab. hollow until the session writes the bean, then filled.
 fn live_mark(live: Option<Live>) -> Span<'static> {
     match live {
         Some(Live::Written) => Span::styled("● ", fg(GREEN)),
@@ -305,7 +308,8 @@ fn detail(frame: &mut Frame, stream: Stream, area: Rect) {
     log_panel(frame, bean, log);
 }
 
-/// where the stream is: priority, the phase in pixels, the phases as dots
+/// where the stream is at: its priority, the phase in big pixels, and every
+/// phase as a dot
 fn now_panel(frame: &mut Frame, bean: &Bean, area: Rect) {
     let block = panel(&bean.slug);
     let inner = block.inner(area);
@@ -340,8 +344,8 @@ fn now_panel(frame: &mut Frame, bean: &Bean, area: Rect) {
         line.push_span(Span::styled(format!("{sep}{}", fit(note, room)), fg(MUTED)));
     }
     frame.render_widget(Paragraph::new(line), priority);
-    // octants, half the logo's height. needs a font with unicode 16 octants,
-    // ghostty draws its own
+    // octants are half the logo's height. they need a font with unicode 16
+    // octants, and ghostty draws its own
     frame.render_widget(
         BigText::builder()
             .pixel_size(PixelSize::Octant)
@@ -371,7 +375,8 @@ fn now_panel(frame: &mut Frame, bean: &Bean, area: Rect) {
     frame.render_widget(Paragraph::new(Line::from(dots)), steps);
 }
 
-/// what enter does: the skill call, where it runs, which launcher
+/// what enter does: which skill it calls, where it runs, and with which
+/// launcher
 fn next_panel(frame: &mut Frame, stream: Stream, area: Rect) {
     let Stream { bean, view } = stream;
     let row = |k: &'static str, v: String| {
@@ -497,8 +502,8 @@ fn status_bar(frame: &mut Frame, screen: Screen, area: Rect) {
     let width = cells(right.iter().map(Span::width).sum());
     let [l, r] = Layout::horizontal([Constraint::Min(1), Constraint::Length(width)]).areas(area);
 
-    // a status message takes the left side, otherwise the launcher does. cut it
-    // short, with a cell of air, so it never runs into the keys
+    // a status message gets the left side, and otherwise the launcher does. it's
+    // cut short with a cell of air, so it never runs into the keys.
     let left = if let Some(msg) = &board.status {
         let room = usize::from(l.width).saturating_sub(4);
         Line::from(vec![
@@ -542,7 +547,8 @@ fn keys_lines() -> Vec<Line<'static>> {
     .collect()
 }
 
-/// the draft's title, and its body with light markdown: # headings, - bullets
+/// the draft's title, and its body with a little markdown (# headings and
+/// - bullets)
 fn draft_lines(board: &Board, bean: &Bean, n: usize) -> (String, Vec<Line<'static>>) {
     let ids = board.drafts_for_selected();
     let Some(draft) = ids

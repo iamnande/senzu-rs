@@ -7,7 +7,7 @@ use crate::bean::{Bean, Phase, Priority};
 use crate::config::{self, Settings};
 use crate::load::{At, Envelope};
 
-/// what `ls` keeps: the filters the flags asked for
+/// the filters the `ls` flags asked for
 #[derive(Debug, Default)]
 pub(crate) struct Filter {
     pub(crate) all: bool,
@@ -16,8 +16,8 @@ pub(crate) struct Filter {
 }
 
 impl Filter {
-    /// done beans stay out unless `--phase done` asks for them. urgent and high
-    /// by default; `--all` or an explicit `--priority` replaces that.
+    /// done beans stay out unless `--phase done` asks for them. by default it's
+    /// urgent and high only, and `--all` or `--priority` replaces that.
     pub(crate) fn keeps(&self, bean: &Bean) -> bool {
         let phase_ok = match self.phase {
             Some(phase) => bean.phase == phase,
@@ -67,7 +67,7 @@ impl<'a> From<&'a Bean> for Row<'a> {
     }
 }
 
-/// `slug  priority  phase  next`, columns padded, each line cut to `width`
+/// `slug  priority  phase  next`, in padded columns, each line cut to `width`
 pub(crate) fn ls_table(beans: &[&Bean], width: usize) -> String {
     let slug_w = beans
         .iter()
@@ -101,7 +101,8 @@ pub(crate) fn brief(bean: &Bean, home: &Path) -> String {
     )
 }
 
-/// header fields, where it all lives, open items, the last log line
+/// the header fields, where everything lives, the open items, and the last
+/// log line
 pub(crate) fn show(envelope: &Envelope<'_>, home: &Path) -> String {
     let bean = envelope.bean;
     let mut out = brief(bean, home);
@@ -156,7 +157,7 @@ pub(crate) struct SettingRow {
     from: String,
 }
 
-/// a setting's value: a path is shown per output, anything else as is
+/// a setting's value. paths get shown per output, anything else as is.
 enum Value<'a> {
     Dir(Option<&'a Path>),
     Text(Option<&'a str>),
@@ -186,8 +187,8 @@ fn settings_list(s: &Settings) -> [(&'static str, Value<'_>, &config::Origin); 7
     ]
 }
 
-/// the settings with their layers. paths go out as plain absolute paths, so a
-/// skill can paste one into a command
+/// the settings and the layer that set each one. paths go out plain and
+/// absolute, so a skill can paste one straight into a command.
 pub(crate) fn setting_rows(s: &Settings) -> Vec<SettingRow> {
     settings_list(s)
         .into_iter()

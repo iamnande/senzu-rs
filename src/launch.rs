@@ -44,10 +44,10 @@ impl fmt::Display for Agent {
     }
 }
 
-/// the phase skills are `/senzu-<phase>`
+/// every phase skill is named `/senzu-<phase>`
 const SKILL_PREFIX: &str = "senzu-";
 
-/// open straight on the bean's next skill, so enter skips the router
+/// claude opens right on the bean's next skill
 fn claude_args(b: &Bean) -> Vec<String> {
     vec![
         "--name".into(),
@@ -60,9 +60,10 @@ fn claude_args(b: &Bean) -> Vec<String> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Launcher {
-    /// replace this process
+    /// take over this process
     Exec,
-    /// a new zellij pane in the worktree, senzu keeps running
+    /// a new zellij pane in the worktree, senzu keeps running, and down the
+    /// rabbit hole we go
     Zellij,
 }
 
@@ -82,29 +83,35 @@ impl fmt::Display for Launcher {
     }
 }
 
-/// a launch is data: what to run, where, under which session name
+/// a launch, everything the body needs. a real-time launch snapshot - what's
+/// running, which launcher it's using, what its session name is, and a few
+/// other relevant attributes.
 #[derive(Debug, Serialize)]
 pub(crate) struct Launch {
     pub(crate) launcher: Launcher,
-    /// the bean already has a tab, so this goes back to it
+    /// auto-nav to existing tab, don't create a new one
     pub(crate) existing_tab: bool,
-    /// what runs: the agent, or zellij making or finding its tab
+    /// what actually runs. an agent, or zellij shenanigans or finding home
+    /// (the existing, already open, tab)
     pub(crate) program: String,
     pub(crate) args: Vec<String>,
     pub(crate) cwd: PathBuf,
     pub(crate) session: String,
-    /// touched right before a new tab opens, so the sidebars know when it did
+    /// touched just before a new tab opens, this notifies the sidebars to
+    /// reflect the updated state
     #[serde(skip)]
     pub(crate) marker: Option<PathBuf>,
 }
 
-/// what a plan needs from around the bean
+/// launch site schematics. perform a site recon before waltzing off into
+/// oblivion.. for 73.. years.. over.. and over.
 #[derive(Clone, Copy)]
 pub(crate) struct Site<'a> {
+    /// bit of a legit "dude, where's my car?" situation. beans are the juice
     pub(crate) beans_dir: &'a Path,
-    /// this senzu, run again as the new tab's sidebar
+    /// senzu phone home. we use this to launch tabs
     pub(crate) exe: &'a Path,
-    /// the zellij tabs open now, by name
+    /// the names of the tabs open right now, helpful for redirection
     pub(crate) tabs: &'a [String],
     /// where the tab markers live
     pub(crate) state_dir: &'a Path,
@@ -130,16 +137,22 @@ pub(crate) enum LaunchError {
     },
 }
 
-/// the agent and launcher a launch uses, resolved from flag, env, config or default
+/// which agent and launcher to use, resolved flag > env > config > default
 #[derive(Clone, Copy)]
 pub(crate) struct Profile {
     pub(crate) agent: Agent,
     pub(crate) launcher: Launcher,
 }
 
-/// every agent opens in the senzu dir, whatever the bean's worktrees are
-/// for zellij, a bean with a tab goes back to it, and one without gets a new
-/// tab: the sidebar on the left, the agent on the right
+/// builds a "ready-to-launch" plan for a given bean, using a given launch
+/// profile, into a given launch site.
+///
+/// constraints:
+/// - agents must open in the senzu dir, we don't care what worktrees
+///   you're reppin - no senzu dir, no senzu.
+/// - beans must only produce at-most one open muxer window tab. when one is
+///   open, all other navigations must redirect to the open muxer window tab.
+/// - done beans must never be re-opened. learn from it, grow from it.
 pub(crate) fn plan(bean: &Bean, profile: Profile, site: Site) -> Result<Launch, LaunchError> {
     let Profile { agent, launcher } = profile;
     let slug = &bean.slug;
@@ -195,15 +208,17 @@ pub(crate) fn plan(bean: &Bean, profile: Profile, site: Site) -> Result<Launch, 
     Ok(planned)
 }
 
-/// the sidebar plus zellij's pane frame
+/// how wide the sidebar is, counting zellij's pane frame
 const TAB_SIDEBAR_COLS: u16 = 38;
 
-/// the tab, with `{slots}` to fill
+/// the tab layout, with `{slots}` to fill in
 const TAB_LAYOUT: &str = include_str!("tab.kdl");
 
-/// the agent takes focus and its pane closes when it exits, then the sidebar
-/// sees it gone and closes the tab. q closes the sidebar pane, and the agent
-/// takes the room. with the agent alone, zellij closes the tab when it exits
+/// the agent gets focus. when it exits its pane closes, the sidebar notices,
+/// and closes the tab.
+///
+/// q closes just the sidebar, and the agent gets the whole tab. once the agent
+/// is alone, zellij closes the tab when it exits.
 fn tab_layout(slug: &str, sidebar: &[String], agent: &[String]) -> String {
     let name = kdl(slug);
     let cols = TAB_SIDEBAR_COLS.to_string();
@@ -220,8 +235,9 @@ fn tab_layout(slug: &str, sidebar: &[String], agent: &[String]) -> String {
     )
 }
 
-/// swap each `{slot}` for its value in one pass, so a value that happens to
-/// hold `{agent}` stays as written. kdl's own braces aren't slots, so they stay
+/// fills in each `{slot}` in a single pass, so a value that happens to contain
+/// `{agent}` doesn't get filled in again. kdl's own braces aren't slots, so
+/// they're left alone.
 fn fill(template: &str, slots: &[(&str, &str)]) -> String {
     let mut out = String::with_capacity(template.len());
     let mut rest = template;
@@ -245,9 +261,11 @@ fn fill(template: &str, slots: &[(&str, &str)]) -> String {
     out
 }
 
-/// this binary, for the new tab's sidebar. after `cargo install` replaces it,
-/// linux names the running one `<path> (deleted)`, and the new one sits at the
-/// plain path, which is the one to run
+/// this binary, to run as the new tab's sidebar.
+///
+/// once `cargo install` replaces it, linux calls the running copy
+/// `<path> (deleted)`. the new one sits at the plain path, and that's the one
+/// we want.
 pub(crate) fn this_exe() -> std::io::Result<PathBuf> {
     std::env::current_exe().map(undeleted)
 }
@@ -259,7 +277,7 @@ fn undeleted(path: PathBuf) -> PathBuf {
     }
 }
 
-/// `command="p" { args "a" "b"; }`, or just the command when there are no args
+/// `command="p" { args "a" "b"; }`, or just the command if there are no args
 fn command_node(cmd: &[String]) -> String {
     let Some((program, args)) = cmd.split_first() else {
         return String::new();
@@ -290,14 +308,14 @@ fn kdl(s: &str) -> String {
     out
 }
 
-/// where every agent opens: the beans dir's parent, the senzu repo. other
-/// repos get worked through their worktrees from there
+/// where every agent opens: the senzu repo, which is the beans dir's parent.
+/// other repos get worked on through their worktrees from there.
 pub(crate) fn senzu_dir(beans_dir: &Path) -> &Path {
     beans_dir.parent().unwrap_or(beans_dir)
 }
 
-/// everything that can be known wrong before starting anything: the agent and,
-/// for zellij, the multiplexer on PATH and us inside it
+/// catches whatever we can before starting anything. the agent has to be on
+/// PATH, and for zellij so does zellij, and we have to be inside it.
 pub(crate) fn preflight(launch: &Launch, agent: Agent, env: &Env) -> Result<(), LaunchError> {
     let on_path = |p: &str| find_on_path(p, env.path.as_deref()).is_some();
     if !on_path(agent.program()) {
@@ -314,9 +332,11 @@ pub(crate) fn preflight(launch: &Launch, agent: Agent, env: &Env) -> Result<(), 
     Ok(())
 }
 
-/// exec never returns on success. zellij returns once the pane is open.
-/// zellij gets no stdin or stdout, since it would print its pane id over the
-/// tui, and its stderr comes back in the error. call `preflight` first
+/// starts the launch. call `preflight` first.
+///
+/// exec never returns if it works. zellij returns once the pane is open.
+/// zellij gets no stdin or stdout, otherwise it prints its pane id over the
+/// tui. its stderr comes back in the error.
 #[tracing::instrument(name = "launch", skip_all, fields(session = %launch.session, launcher = ?launch.launcher))]
 pub(crate) fn run(launch: &Launch) -> Result<(), LaunchError> {
     let mut cmd = Command::new(&launch.program);
@@ -332,7 +352,8 @@ pub(crate) fn run(launch: &Launch) -> Result<(), LaunchError> {
         }
         Launcher::Zellij => {
             if let Some(marker) = &launch.marker {
-                // without it the tab just never reads as unwritten, so carry on
+                // without the marker the tab never shows as unwritten, which is
+                // fine, so keep going
                 if let Err(e) = touch(marker) {
                     tracing::error!(error = %e, marker = %marker.display(), "tab marker");
                 }
@@ -349,14 +370,14 @@ pub(crate) fn run(launch: &Launch) -> Result<(), LaunchError> {
             let stderr = String::from_utf8_lossy(&out.stderr);
             Err(LaunchError::Zellij {
                 status: out.status,
-                // the last line is usually the one that says what went wrong
+                // the last line is usually the one that says what broke
                 stderr: stderr.trim().lines().last().unwrap_or("").to_owned(),
             })
         }
     }
 }
 
-/// make the file if it's missing, and set its mtime to now either way
+/// creates the file if it's missing, and sets its mtime to now either way
 fn touch(path: &Path) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
@@ -364,7 +385,8 @@ fn touch(path: &Path) -> std::io::Result<()> {
     std::fs::File::create(path)?.set_modified(std::time::SystemTime::now())
 }
 
-/// `which`, without the crate: the first executable file named `program` on PATH
+/// a tiny `which`, so we don't need the crate. the first executable named
+/// `program` on PATH.
 pub(crate) fn find_on_path(program: &str, path: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
     use std::os::unix::fs::PermissionsExt as _;
     std::env::split_paths(path?)

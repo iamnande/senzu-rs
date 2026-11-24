@@ -1,5 +1,7 @@
-//! which beans have a zellij tab open, and whether that session has written
-//! the bean since. a tab is named after its bean's slug
+//! zellij tabs, one per bean, named after the bean's slug.
+//!
+//! this tracks which beans have a tab open, and whether the session in that
+//! tab has written to its bean since it opened.
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -10,12 +12,13 @@ use serde::Deserialize;
 use crate::config::Env;
 use crate::launch;
 
-/// a bean with a live tab
+/// a bean that has a tab open right now
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Live {
-    /// the bean changed since the tab opened, or we can't tell when it opened
+    /// the bean changed after the tab opened (or we can't tell when it opened)
     Written,
-    /// nothing written since the tab opened. closing it now loses the session's work
+    /// nothing's been written since the tab opened, so closing it now throws
+    /// away the session's work
     Quiet,
 }
 
@@ -31,30 +34,32 @@ pub(crate) enum TabsError {
     Parse(serde_json::Error),
 }
 
-/// what we want out of each tab zellij lists
+/// the bits we care about in each tab zellij lists
 #[derive(Debug, Deserialize)]
 pub(crate) struct Tab {
     #[serde(rename = "tab_id")]
     pub(crate) id: u64,
     pub(crate) name: String,
-    /// the tiled panes you can focus, so not the bars
+    /// the tiled panes you can focus (the bars don't count)
     #[serde(rename = "selectable_tiled_panes_count")]
     pub(crate) panes: usize,
 }
 
-/// the tabs in this zellij session
+/// every tab in this zellij session
 pub(crate) fn list(env: &Env) -> Result<Vec<Tab>, TabsError> {
     let out = zellij(env, &["list-tabs", "--json", "--panes"])?;
     parse(&out)
 }
 
-/// close one tab, and everything in it
+/// close a tab, and everything running in it
 pub(crate) fn close(env: &Env, id: u64) -> Result<(), TabsError> {
     zellij(env, &["close-tab-by-id", &id.to_string()]).map(drop)
 }
 
-/// the open tab names, for planning a launch. none outside zellij, and none
-/// when zellij won't say, which costs at worst a second tab for the bean
+/// the names of the open tabs, so a launch can go back to one.
+///
+/// outside zellij, or when zellij won't tell us, this is empty. worst case the
+/// bean gets a second tab.
 pub(crate) fn open_names(env: &Env) -> Vec<String> {
     if !env.in_zellij {
         return Vec::new();
@@ -68,8 +73,8 @@ pub(crate) fn open_names(env: &Env) -> Vec<String> {
     }
 }
 
-/// `zellij action <args>`, found on our PATH like the launch is, so a test's
-/// fake stands in and the real one never runs by accident
+/// runs `zellij action <args>`. zellij comes off our PATH, same as the launch,
+/// so tests can swap in a fake and never poke the real one by accident.
 fn zellij(env: &Env, args: &[&str]) -> Result<Vec<u8>, TabsError> {
     let what = args.first().copied().unwrap_or_default();
     let program =
@@ -91,7 +96,8 @@ fn parse(json: &[u8]) -> Result<Vec<Tab>, TabsError> {
     serde_json::from_slice(json).map_err(TabsError::Parse)
 }
 
-/// the launcher touches this when it opens a tab, so its mtime is the open time
+/// the launcher touches this when it opens a tab, so its mtime tells us when
+/// the tab opened
 pub(crate) fn marker(state_dir: &Path, slug: &str) -> PathBuf {
     state_dir.join("tabs").join(slug)
 }
@@ -103,7 +109,8 @@ pub(crate) struct Dirs<'a> {
     pub(crate) state: &'a Path,
 }
 
-/// the beans among `slugs` with a tab in `tabs`, and whether each has been written
+/// which of `slugs` have a tab in `tabs`, and whether each bean's been written
+/// since
 pub(crate) fn live<'a>(
     tabs: &[String],
     slugs: impl IntoIterator<Item = &'a str>,
@@ -172,7 +179,7 @@ mod tests {
         // opened at 100, written at 150: written
         touch(&marker(state.path(), "harden-the-hut"), 100);
         touch(&beans.path().join("harden-the-hut.json"), 150);
-        // a tab opened by hand has no marker, so we can't say it's quiet
+        // a tab opened by hand has no marker, so we can't know it's quiet
         touch(&beans.path().join("kelp.json"), 50);
 
         let slugs = ["crab-shell", "harden-the-hut", "kelp", "tidy-the-tidepool"];

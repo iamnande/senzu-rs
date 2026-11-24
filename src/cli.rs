@@ -25,15 +25,15 @@ pub(crate) struct Cli {
     #[arg(long, global = true, env = "SENZU_STATE")]
     pub(crate) state: Option<PathBuf>,
 
-    /// where the skills put a stream's worktrees
+    /// git worktree shenanigans be happenin' here, beware
     #[arg(long, global = true, env = "SENZU_WORKTREES")]
     pub(crate) worktrees: Option<PathBuf>,
 
-    /// what the skills start a branch name with, like `crab/`
+    /// all the cool kids use branch prefixes now, we're beginning to blend in
     #[arg(long, global = true, env = "SENZU_BRANCH_PREFIX")]
     pub(crate) branch_prefix: Option<String>,
 
-    /// the slack channel a stream's thread lives in. unset, the skills skip slack
+    /// slack's stranglehold on the tech industry should be studied. legit beautiful product.
     #[arg(long, global = true, env = "SENZU_THREAD_CHANNEL")]
     pub(crate) thread_channel: Option<String>,
 

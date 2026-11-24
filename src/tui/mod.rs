@@ -13,7 +13,7 @@ use crate::launch::{self, Launch, Launcher, Profile};
 use crate::{load, tabs};
 use app::{Action, Board};
 
-/// how often the live tabs get checked. a `zellij action` call each time
+/// how often we check the live tabs. each check is a `zellij action` call.
 const TICK: Duration = Duration::from_secs(2);
 
 /// the whole screen, or just the list beside an agent in a bean's tab
@@ -35,7 +35,8 @@ pub(crate) struct Opts<'a> {
 /// what's left to do once the screen is handed back
 enum Outcome {
     Quit,
-    /// exec can't happen with the tui up: restore first, then replace the process
+    /// exec can't happen with the tui up, so restore the terminal first, then
+    /// replace the process
     Exec(Launch),
 }
 
@@ -47,14 +48,16 @@ struct Ctx<'a> {
     opts: Opts<'a>,
 }
 
-/// exec hands the terminal to the agent, zellij opens or finds a tab and comes back
+/// with exec the agent takes over the terminal. with zellij we open or find a
+/// tab, then come back.
 pub(crate) fn run(dirs: tabs::Dirs, env: &Env, opts: Opts) -> anyhow::Result<()> {
     let mut board = Board::new(Vec::new());
     reload(&mut board, dirs.beans)?;
     if let Some(slug) = opts.tab {
         board.focus(slug);
     }
-    // init sets raw mode and the alternate screen, and hooks panics to undo both
+    // init turns on raw mode and the alternate screen, and hooks panics so both
+    // get undone
     let mut terminal = ratatui::init();
     title::push();
     let ctx = Ctx { dirs, env, opts };
@@ -92,7 +95,8 @@ fn event_loop(
         }
         let key = match event::read()? {
             Event::Key(key) => key,
-            // the agent's pane closing widens ours, so look now, not next tick
+            // when the agent's pane closes ours gets wider, so check now instead
+            // of waiting for the next tick
             Event::Resize(..) => {
                 watch.tick(board, ctx);
                 continue;
@@ -125,11 +129,13 @@ fn event_loop(
 }
 
 /// keeps the live tabs fresh, and closes this sidebar's tab once its agent is
-/// gone. a failing zellij is logged once, not every tick
+/// gone.
+///
+/// if zellij keeps failing we log it once, not every tick.
 #[derive(Default)]
 struct Watch {
     last_error: Option<String>,
-    /// the agent showed up beside us, so one pane left means it exited
+    /// the agent showed up beside us, so if we're the only pane left it exited
     agent_seen: bool,
 }
 
@@ -161,8 +167,10 @@ impl Watch {
         );
     }
 
-    /// the agent's pane closes when it exits, leaving just us. closing the tab
-    /// ends this process too. a pane you split in beside us keeps the tab open
+    /// the agent's pane closes when it exits, which leaves just us. closing the
+    /// tab ends this process too.
+    ///
+    /// if you split a pane in beside us, the tab stays open.
     fn close_when_alone(&mut self, list: &[tabs::Tab], ctx: Ctx) {
         let Some(home) = ctx.opts.tab else {
             return;
@@ -184,11 +192,13 @@ impl Watch {
     }
 }
 
-/// plan and preflight with the tui still up, so any problem lands in the status line
+/// plan and preflight while the tui is still up, so any problem shows up in the
+/// status line
 fn launch_from(board: &mut Board, slug: &str, ctx: Ctx) -> Option<Outcome> {
     let profile = ctx.opts.profile;
     let bean = board.beans.iter().find(|b| b.slug == slug)?;
-    // fresh, not the last tick's: a stale list could open a bean's tab twice
+    // get a fresh list, not the last tick's. a stale one could open a bean's tab
+    // twice
     let open_tabs = if profile.launcher == Launcher::Zellij {
         tabs::open_names(ctx.env)
     } else {
@@ -232,8 +242,9 @@ fn launch_from(board: &mut Board, slug: &str, ctx: Ctx) -> Option<Outcome> {
     None
 }
 
-/// a missing dir is fatal. bad beans are a count in the status line, since
-/// anything printed to stderr would vanish under the alternate screen
+/// a missing dir is fatal. bad beans just show up as a count in the status
+/// line, since anything printed to stderr would vanish under the alternate
+/// screen.
 fn reload(board: &mut Board, beans_dir: &Path) -> anyhow::Result<()> {
     let harvest = load::load(beans_dir)?;
     let skipped = harvest.errors.len();
@@ -250,9 +261,10 @@ fn reload(board: &mut Board, beans_dir: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// the terminal title, which zellij shows as the pane name. xterm's title stack
-/// saves the old one and puts it back on the way out. terminals without the
-/// stack ignore the push and pop, and keep our title
+/// sets the terminal title, which zellij shows as the pane name.
+///
+/// xterm's title stack saves the old title and puts it back on the way out.
+/// terminals without the stack ignore the push and pop, and keep ours.
 mod title {
     use std::io::Write as _;
 

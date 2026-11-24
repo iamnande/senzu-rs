@@ -3,7 +3,8 @@ use std::process::Command;
 
 use crate::bean::Bean;
 
-/// the beans this dir belongs to: by worktree path first, then by branch name
+/// which beans this dir belongs to. we match on the worktree path first, and
+/// fall back to the branch name.
 pub(crate) fn matches<'a>(beans: &'a [Bean], cwd: &Path) -> Vec<&'a Bean> {
     let cwd = cwd.canonicalize().unwrap_or_else(|_| cwd.to_owned());
     let by_path: Vec<&Bean> = beans
@@ -24,7 +25,7 @@ pub(crate) fn matches<'a>(beans: &'a [Bean], cwd: &Path) -> Vec<&'a Bean> {
     }
 }
 
-/// a bean whose slug shows up in the branch, ignoring case
+/// beans whose slug shows up in the branch name (case doesn't matter).
 fn by_branch<'a>(beans: &'a [Bean], branch: &str) -> Vec<&'a Bean> {
     let branch = branch.to_lowercase();
     beans
@@ -33,8 +34,10 @@ fn by_branch<'a>(beans: &'a [Bean], branch: &str) -> Vec<&'a Bean> {
         .collect()
 }
 
-/// symbolic-ref works on a branch with no commits yet, where rev-parse doesn't.
-/// a detached head or no git at all means no branch.
+/// the current branch, if there is one.
+///
+/// we ask symbolic-ref because it works on a brand new branch with no commits,
+/// and rev-parse doesn't. a detached head, or no git at all, means no branch.
 fn branch(cwd: &Path) -> Option<String> {
     let out = Command::new("git")
         .args(["symbolic-ref", "--short", "-q", "HEAD"])
