@@ -38,7 +38,7 @@ const POPUP_MARGIN: u16 = 1;
 /// the six phases a stream moves through, done aside
 const STEPS: [Phase; 6] = [
     Phase::Ground,
-    Phase::Plan,
+    Phase::Rfc,
     Phase::Execute,
     Phase::Refine,
     Phase::Pr,

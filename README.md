@@ -10,7 +10,7 @@ cargo install --git https://github.com/iamnande/senzu-rs
 
 ## beans
 
-a bean is one stream of work, a `<slug>.json` in the beans dir. `senzu check` says what the schema wants. a bean's plan sits beside it as `<slug>.plan.md`: found there, never listed in the bean, and kept out of git. `check` fails on a plan git tracks, and warns on one with no bean.
+a bean is one stream of work, a `<slug>.json` in the beans dir. `senzu check` says what the schema wants. a bean's rfc sits beside it as `<slug>.rfc.md`: found there, never listed in the bean, and kept out of git. `check` fails on an rfc git tracks, and warns on one with no bean.
 
 ## config
 
@@ -56,13 +56,13 @@ piped, or with `--json`, `ls`, `show` and `config` print json. paths come out pl
   "bean": {},
   "path": "/home/crab/beans/crab.json",
   "attachments": [
-    { "kind": "plan", "path": "/home/crab/beans/crab.plan.md" },
+    { "kind": "rfc", "path": "/home/crab/beans/crab.rfc.md" },
     { "kind": "issue", "url": "https://example.com/issues/1" }
   ]
 }
 ```
 
-kinds are `plan`, `artifact`, `issue` and `link`. anything that starts with `scheme://` has `url`, the rest is a local file with `path` (so `mailto:` is a path).
+kinds are `rfc`, `artifact`, `issue` and `link`. anything that starts with `scheme://` has `url`, the rest is a local file with `path` (so `mailto:` is a path).
 
 `senzu config --json`, one row per setting, unset is `null`:
 

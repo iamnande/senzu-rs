@@ -34,7 +34,7 @@ fn ok_on_the_fixtures_and_skips_markdown() {
 #[test]
 fn a_plan_beside_its_bean_is_not_a_markdown_bean() {
     let world = World::new();
-    std::fs::write(world.beans().join("crab-shell.plan.md"), "# crab-shell\n").unwrap();
+    std::fs::write(world.beans().join("crab-shell.rfc.md"), "# crab-shell\n").unwrap();
     world
         .senzu()
         .arg("check")
@@ -65,9 +65,9 @@ fn git_in(world: &World, dir: &std::path::Path, args: &[&str]) {
 #[test]
 fn a_plan_git_tracks_fails_and_is_named() {
     let world = World::new();
-    std::fs::write(world.beans().join("crab-shell.plan.md"), "# crab-shell\n").unwrap();
+    std::fs::write(world.beans().join("crab-shell.rfc.md"), "# crab-shell\n").unwrap();
     git(&world, &["init", "-q"]);
-    git(&world, &["add", "crab-shell.plan.md"]);
+    git(&world, &["add", "crab-shell.rfc.md"]);
     world
         .senzu()
         .env("PATH", std::env::var_os("PATH").unwrap())
@@ -75,7 +75,7 @@ fn a_plan_git_tracks_fails_and_is_named() {
         .assert()
         .code(1)
         .stdout(predicate::str::contains(
-            "crab-shell.plan.md: git tracks it, and plans stay local",
+            "crab-shell.rfc.md: git tracks it, and rfcs stay local",
         ));
 }
 
@@ -83,7 +83,7 @@ fn a_plan_git_tracks_fails_and_is_named() {
 #[test]
 fn tracked_beans_and_an_untracked_plan_pass() {
     let world = World::new();
-    std::fs::write(world.beans().join("crab-shell.plan.md"), "# crab-shell\n").unwrap();
+    std::fs::write(world.beans().join("crab-shell.rfc.md"), "# crab-shell\n").unwrap();
     git(&world, &["init", "-q"]);
     git(&world, &["add", "*.json"]);
     world
@@ -101,9 +101,9 @@ fn an_inherited_index_cant_name_another_repos_plan() {
     let world = World::new();
     let other = world.home.path().join("other");
     std::fs::create_dir_all(&other).unwrap();
-    std::fs::write(other.join("crab-other.plan.md"), "# crab-other\n").unwrap();
+    std::fs::write(other.join("crab-other.rfc.md"), "# crab-other\n").unwrap();
     git_in(&world, &other, &["init", "-q"]);
-    git_in(&world, &other, &["add", "crab-other.plan.md"]);
+    git_in(&world, &other, &["add", "crab-other.rfc.md"]);
     git(&world, &["init", "-q"]);
     world
         .senzu()
@@ -118,7 +118,7 @@ fn an_inherited_index_cant_name_another_repos_plan() {
 #[test]
 fn a_plan_with_no_bean_warns_and_passes() {
     let world = World::new();
-    std::fs::write(world.beans().join("crab-gone.plan.md"), "# crab-gone\n").unwrap();
+    std::fs::write(world.beans().join("crab-gone.rfc.md"), "# crab-gone\n").unwrap();
     world
         .senzu()
         .arg("check")
@@ -126,7 +126,7 @@ fn a_plan_with_no_bean_warns_and_passes() {
         .success()
         .stdout("ok 5 beans\n")
         .stderr(predicate::str::contains(
-            "crab-gone.plan.md: a plan with no bean beside it",
+            "crab-gone.rfc.md: an rfc with no bean beside it",
         ));
 }
 
@@ -307,13 +307,13 @@ fn rejects_a_schema_1_bean_and_says_to_migrate() {
 }
 
 #[test]
-fn rejects_a_stored_plan_attachment() {
+fn rejects_a_stored_rfc_attachment() {
     let mut bean = World::new().fixture("harden-the-hut");
-    bean["attachments"] = json!([{ "kind": "plan", "uri": "harden-the-hut.plan.md" }]);
+    bean["attachments"] = json!([{ "kind": "plan", "uri": "harden-the-hut.rfc.md" }]);
     rejects(
         "harden-the-hut.json",
         &bean,
-        "plans are found beside the bean",
+        "rfcs are found beside the bean",
     );
 }
 

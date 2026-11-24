@@ -20,8 +20,8 @@ use serde::{Deserialize, Serialize};
 /// the schema this senzu reads. a bean with any other one is refused
 pub const SCHEMA: u32 = 2;
 
-/// a bean's plan sits beside it as `<slug>.plan.md`
-pub const PLAN_SUFFIX: &str = ".plan.md";
+/// a bean's rfc sits beside it as `<slug>.rfc.md`
+pub const RFC_SUFFIX: &str = ".rfc.md";
 
 /// one stream of work, one `<slug>.json` in the beans dir
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,7 +45,7 @@ pub struct Bean {
     /// the repos it touches. the first one that exists is where the agent opens
     #[serde(default)]
     pub repos: Vec<Repo>,
-    /// what hangs off it. the plan isn't stored here, it's found beside the bean
+    /// what hangs off it. the rfc isn't stored here, it's found beside the bean
     #[serde(default)]
     pub attachments: Vec<Attachment>,
     /// pull request urls
@@ -153,8 +153,9 @@ pub struct Attachment {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
-    /// the `<slug>.plan.md` beside the bean. found, never stored
-    Plan,
+    /// the `<slug>.rfc.md` beside the bean. found, never stored
+    #[serde(alias = "plan")]
+    Rfc,
     /// a claude.ai artifact
     Artifact,
     /// a tracker issue
@@ -166,7 +167,7 @@ pub enum Kind {
 impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
-            Self::Plan => "plan",
+            Self::Rfc => "rfc",
             Self::Artifact => "artifact",
             Self::Issue => "issue",
             Self::Link => "link",
@@ -194,8 +195,10 @@ pub struct LogEntry {
 pub enum Phase {
     /// figuring out what the problem is
     Ground,
-    /// the prd and tech spec
-    Plan,
+    /// the rfc. beans from before the rename still say `plan`
+    #[serde(alias = "plan")]
+    #[value(alias = "plan")]
+    Rfc,
     /// building it
     Execute,
     /// making it right
@@ -212,7 +215,7 @@ impl fmt::Display for Phase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
             Self::Ground => "ground",
-            Self::Plan => "plan",
+            Self::Rfc => "rfc",
             Self::Execute => "execute",
             Self::Refine => "refine",
             Self::Pr => "pr",
@@ -280,9 +283,9 @@ impl Bean {
             }
         }
         for a in &self.attachments {
-            if a.kind == Kind::Plan {
+            if a.kind == Kind::Rfc {
                 out.push(format!(
-                    "attachment {:?} is a plan: plans are found beside the bean as {}{PLAN_SUFFIX}, not stored",
+                    "attachment {:?} is an rfc: rfcs are found beside the bean as {}{RFC_SUFFIX}, not stored",
                     a.uri, self.slug
                 ));
             }

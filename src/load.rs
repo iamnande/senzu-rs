@@ -4,7 +4,7 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
-use crate::bean::{self, Bean, Kind, PLAN_SUFFIX, SCHEMA};
+use crate::bean::{self, Bean, Kind, RFC_SUFFIX, SCHEMA};
 
 /// one bean that didn't make it. the rest of the dir still loads
 #[derive(Debug, thiserror::Error)]
@@ -108,8 +108,8 @@ pub struct Harvest {
     pub unknown: Vec<LoadError>,
     /// old `.md` beans sitting in the dir, skipped
     pub markdown: usize,
-    /// `<slug>.plan.md` files with no `<slug>.json` beside them
-    pub orphan_plans: Vec<PathBuf>,
+    /// `<slug>.rfc.md` files with no `<slug>.json` beside them
+    pub orphan_rfcs: Vec<PathBuf>,
 }
 
 /// read every `*.json` in the dir. a bad bean lands in `errors`, never fails the lot
@@ -134,14 +134,14 @@ pub fn load(dir: &Path) -> Result<Harvest, DirError> {
 
     let mut harvest = Harvest::default();
     for path in &paths {
-        // a plan belongs to a bean, it isn't one
+        // an rfc belongs to a bean, it isn't one
         if let Some(slug) = path
             .file_name()
             .and_then(|n| n.to_str())
-            .and_then(|n| n.strip_suffix(PLAN_SUFFIX))
+            .and_then(|n| n.strip_suffix(RFC_SUFFIX))
         {
             if !paths.contains(&dir.join(format!("{slug}.json"))) {
-                harvest.orphan_plans.push(path.clone());
+                harvest.orphan_rfcs.push(path.clone());
             }
             continue;
         }
@@ -170,7 +170,7 @@ pub fn load(dir: &Path) -> Result<Harvest, DirError> {
         errors = harvest.errors.len(),
         unknown = harvest.unknown.len(),
         markdown = harvest.markdown,
-        orphan_plans = harvest.orphan_plans.len(),
+        orphan_rfcs = harvest.orphan_rfcs.len(),
         "loaded"
     );
     Ok(harvest)
@@ -214,7 +214,7 @@ pub struct Envelope<'a> {
     pub bean: &'a Bean,
     /// the bean's own file
     pub path: PathBuf,
-    /// the plan beside it when there is one, then the stored ones
+    /// the rfc beside it when there is one, then the stored ones
     pub attachments: Vec<Resolved>,
 }
 
@@ -239,18 +239,18 @@ pub enum At {
 }
 
 impl Found {
-    /// relative refs resolve against the bean's dir, and `<slug>.plan.md`
+    /// relative refs resolve against the bean's dir, and `<slug>.rfc.md`
     /// leads the list when it's there
     #[must_use]
     pub fn envelope(&self) -> Envelope<'_> {
         let path = std::path::absolute(&self.path).unwrap_or_else(|_| self.path.clone());
         let dir = path.parent().unwrap_or(Path::new("/"));
         let mut attachments = Vec::new();
-        let plan = dir.join(format!("{}{PLAN_SUFFIX}", self.bean.slug));
-        if plan.is_file() {
+        let rfc = dir.join(format!("{}{RFC_SUFFIX}", self.bean.slug));
+        if rfc.is_file() {
             attachments.push(Resolved {
-                kind: Kind::Plan,
-                at: At::Path(plan),
+                kind: Kind::Rfc,
+                at: At::Path(rfc),
             });
         }
         for a in &self.bean.attachments {
@@ -269,14 +269,14 @@ impl Found {
     }
 }
 
-/// plans git tracks in the beans dir, relative to it. plans stay local, so
+/// rfcs git tracks in the beans dir, relative to it. rfcs stay local, so
 /// any is a problem. no git, or not a repo: nothing to check
 #[must_use]
-pub fn tracked_plans(dir: &Path) -> Vec<String> {
+pub fn tracked_rfcs(dir: &Path) -> Vec<String> {
     // an inherited GIT_DIR or GIT_INDEX_FILE (rebase -x, hooks) would point
     // git at another repo
     let out = Command::new("git")
-        .args(["ls-files", "-z", "--", &format!("*{PLAN_SUFFIX}")])
+        .args(["ls-files", "-z", "--", &format!("*{RFC_SUFFIX}")])
         .current_dir(dir)
         .env_remove("GIT_DIR")
         .env_remove("GIT_WORK_TREE")

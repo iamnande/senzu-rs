@@ -461,7 +461,7 @@ mod tests {
         );
         assert!(
             layout.contains(
-                r#"pane name="crab-shell" focus=true close_on_exit=true command="claude" { args "--name" "crab-shell" "/senzu-plan crab-shell"; }"#
+                r#"pane name="crab-shell" focus=true close_on_exit=true command="claude" { args "--name" "crab-shell" "/senzu-rfc crab-shell"; }"#
             ),
             "{layout}"
         );
