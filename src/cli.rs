@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 use crate::bean::{Phase, Priority};
+use crate::launch::{Agent, Launcher};
 
 /// senzu: browse beans, launch an agent into one
 #[derive(Debug, Parser)]
@@ -14,11 +15,11 @@ pub(crate) struct Cli {
 
     /// the agent profile to launch
     #[arg(long, global = true, env = "SENZU_AGENT")]
-    pub(crate) agent: Option<String>,
+    pub(crate) agent: Option<Agent>,
 
-    /// how the agent opens: exec or zellij
+    /// how the agent opens
     #[arg(long, global = true, env = "SENZU_LAUNCH")]
-    pub(crate) launch: Option<String>,
+    pub(crate) launch: Option<Launcher>,
 
     /// where the logs and tab markers go. no config key, the log starts first
     #[arg(long, global = true, env = "SENZU_STATE")]

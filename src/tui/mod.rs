@@ -78,7 +78,7 @@ fn event_loop(
         let view = ui::View {
             home: &ctx.env.home,
             today: jiff::Zoned::now().date(),
-            agent: ctx.opts.profile.agent.name,
+            agent: ctx.opts.profile.agent.name(),
             launcher: ctx.opts.profile.launcher,
             layout: ctx.opts.layout,
         };

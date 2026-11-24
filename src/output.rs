@@ -165,8 +165,8 @@ enum Value<'a> {
 fn settings_list(s: &Settings) -> [(&'static str, Value<'_>, &config::Origin); 7] {
     [
         ("beans", Value::Dir(s.beans.as_deref()), &s.from.beans),
-        ("agent", Value::Text(Some(&s.agent)), &s.from.agent),
-        ("launch", Value::Text(Some(&s.launch)), &s.from.launch),
+        ("agent", Value::Text(Some(s.agent.name())), &s.from.agent),
+        ("launch", Value::Text(Some(s.launch.name())), &s.from.launch),
         ("state", Value::Dir(Some(&s.state)), &s.from.state),
         (
             "worktrees",
@@ -264,8 +264,8 @@ mod tests {
         use crate::config::{Origin, Origins};
         let s = Settings {
             beans: Some("/home/crab/beans".into()),
-            agent: "claude".into(),
-            launch: "exec".into(),
+            agent: crate::launch::Agent::Claude,
+            launch: crate::launch::Launcher::Exec,
             state: "/var/senzu".into(),
             worktrees: "/home/crab/wt".into(),
             branch_prefix: Some("crab/".into()),

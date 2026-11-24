@@ -94,6 +94,7 @@ fn a_launch_flag_beats_the_detection() {
     assert_eq!(got["launcher"], "exec");
 }
 
+/// clap turns a bad name away before senzu runs, and lists the good ones
 #[test]
 fn unknown_agent_exits_2_and_lists_claude() {
     let world = World::new();
@@ -102,9 +103,7 @@ fn unknown_agent_exits_2_and_lists_claude() {
         .args(["--agent", "nope", "open", "crab-shell", "--dry-run"])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains(
-            "unknown agent \"nope\", known: claude",
-        ));
+        .stderr(predicate::str::contains("possible values: claude"));
 }
 
 #[test]
@@ -115,36 +114,52 @@ fn unknown_launch_exits_2() {
         .args(["--launch", "tmux", "open", "crab-shell", "--dry-run"])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("known: exec, zellij"));
+        .stderr(predicate::str::contains("possible values: exec, zellij"));
 }
 
-/// only claude exists, so bogus names show which layer won: the error names it
+/// a bad name in the env is a usage mistake too
 #[test]
-fn agent_flag_beats_env_beats_config() {
+fn unknown_env_launch_exits_2() {
     let world = World::new();
-    write_config(world.home.path(), "agent = \"from-config\"\n");
-    let open = ["open", "crab-shell", "--dry-run"];
+    world
+        .senzu()
+        .env("SENZU_LAUNCH", "tmux")
+        .arg("config")
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("'tmux'"));
+}
 
+/// a bad name in the config fails the load, and the error names the file
+#[test]
+fn unknown_config_agent_exits_2() {
+    let world = World::new();
+    write_config(world.home.path(), "agent = \"nope\"\n");
     world
         .senzu()
-        .args(open)
+        .args(["open", "crab-shell", "--dry-run"])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("\"from-config\""));
-    world
-        .senzu()
-        .env("SENZU_AGENT", "from-env")
-        .args(open)
-        .assert()
-        .code(2)
-        .stderr(predicate::str::contains("\"from-env\""));
-    world
-        .senzu()
-        .env("SENZU_AGENT", "from-env")
-        .args(["--agent", "claude"])
-        .args(open)
-        .assert()
-        .success();
+        .stderr(predicate::str::contains("config.toml").and(predicate::str::contains("nope")));
+}
+
+/// launch has two names, so it shows which layer won
+#[test]
+fn launch_flag_beats_env_beats_config() {
+    let world = World::new();
+    write_config(world.home.path(), "launch = \"zellij\"\n");
+    let got = dry_run(&mut world.senzu(), "harden-the-hut");
+    assert_eq!(got["launcher"], "zellij");
+    let got = dry_run(world.senzu().env("SENZU_LAUNCH", "exec"), "harden-the-hut");
+    assert_eq!(got["launcher"], "exec");
+    let got = dry_run(
+        world
+            .senzu()
+            .env("SENZU_LAUNCH", "exec")
+            .args(["--launch", "zellij"]),
+        "harden-the-hut",
+    );
+    assert_eq!(got["launcher"], "zellij");
 }
 
 #[test]
